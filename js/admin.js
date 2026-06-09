@@ -30,11 +30,14 @@ async function init() {
   document.getElementById("sessionForm").addEventListener("submit", saveProgram);
   document.getElementById("deleteSessionBtn").addEventListener("click", deleteProgram);
 
-  ["sStart", "sEnd"].forEach((id) =>
-    document.getElementById(id).addEventListener("input", () => { updateRuntime(); updateRepeatPreview(); }));
-  document.getElementById("sDate").addEventListener("input", updateRepeatPreview);
-  document.getElementById("sCount").addEventListener("input", updateRepeatPreview);
-  document.getElementById("sRepeat").addEventListener("change", onRepeatToggle);
+  document.getElementById("addRowBtn").addEventListener("click", () => addSessionRow());
+  document.getElementById("repeatToggleBtn").addEventListener("click", () => {
+    document.getElementById("repeatBox").classList.toggle("hidden");
+    updateRepeatPreview();
+  });
+  document.getElementById("repeatFillBtn").addEventListener("click", repeatFill);
+  ["rStartDate", "sCount"].forEach((id) =>
+    document.getElementById(id).addEventListener("input", updateRepeatPreview));
   document.querySelectorAll("#weekdays .wd-btn").forEach((b) =>
     b.addEventListener("click", () => { b.classList.toggle("active"); updateRepeatPreview(); }));
 
@@ -99,11 +102,12 @@ function buildPrograms() {
   state.programs = Object.entries(map).map(([id, sess]) => {
     sess.sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
     const r = sess[0];
+    const timeVaries = sess.some((s) => s.start_time !== r.start_time || s.end_time !== r.end_time);
     return {
       id,
       title: r.title, client: r.client, location: r.location,
       needed_mentors: r.needed_mentors, needed_facilitators: r.needed_facilitators,
-      status: r.status, memo: r.memo, start_time: r.start_time, end_time: r.end_time,
+      status: r.status, memo: r.memo, start_time: r.start_time, end_time: r.end_time, timeVaries,
       sessions: sess, firstDate: sess[0].date, lastDate: sess[sess.length - 1].date,
     };
   });
@@ -240,8 +244,8 @@ function renderProgramList() {
             <div class="text-sm" style="font-weight: var(--font-weight-bold)">${Util.escapeHtml(p.client || "-")}</div>
             <div class="text-caption text-muted">${Util.escapeHtml(p.title)}</div>
           </td>
-          <td class="text-sm" style="white-space:nowrap">${Util.hhmm(p.start_time)}~${Util.hhmm(p.end_time)}</td>
-          <td><span class="runtime">⏱ ${Util.durationLabel(p.start_time, p.end_time)}</span></td>
+          <td class="text-sm" style="white-space:nowrap">${p.timeVaries ? "<span class='text-caption text-muted'>회차별 상이</span>" : Util.hhmm(p.start_time) + "~" + Util.hhmm(p.end_time)}</td>
+          <td>${p.timeVaries ? "<span class='text-caption text-muted'>—</span>" : `<span class="runtime">⏱ ${Util.durationLabel(p.start_time, p.end_time)}</span>`}</td>
           <td class="text-sm">${Util.escapeHtml(p.location || "-")}</td>
           <td>
             <div><span class="text-caption text-muted">멘토</span> ${chipsHtml(p.id, "mentor")} <span class="text-caption text-muted">(${confirmedCount(p.id, "mentor")}/${p.needed_mentors})</span></div>
@@ -283,31 +287,24 @@ function renderBoard() {
   head.innerHTML = `
     <div>
       <div class="card-title" style="margin:0">${Util.escapeHtml(p.client || p.title)}</div>
-      <div class="text-caption text-muted">${Util.escapeHtml(p.title)} · ${Util.hhmm(p.start_time)}~${Util.hhmm(p.end_time)} · ${Util.durationLabel(p.start_time, p.end_time)}</div>
+      <div class="text-caption text-muted">${Util.escapeHtml(p.title)} · ${p.timeVaries ? p.sessions.length + "회차(시간 상이)" : Util.hhmm(p.start_time) + "~" + Util.hhmm(p.end_time) + " · " + Util.durationLabel(p.start_time, p.end_time)}</div>
     </div>
     <button class="btn btn-secondary btn-sm" id="editSessionBtn">교육 편집</button>`;
   head.querySelector("#editSessionBtn").addEventListener("click", () => openModal(p));
 
   board.innerHTML = `
     <div style="margin-bottom: var(--space-5)">
-      <div class="text-caption text-muted" style="margin-bottom: var(--space-2)">회차 (${p.sessions.length}회) — 배정은 모든 회차에 함께 적용돼요</div>
-      <div class="mentor-chips" style="margin-bottom: var(--space-2)">
-        ${p.sessions.map((s) => `<span class="badge badge-neutral">${Util.fmtDate(s.date)} <span data-rmdate="${s.id}" style="cursor:pointer; margin-left:4px; color:var(--color-info-negative); font-weight:700">✕</span></span>`).join("")}
+      <div class="row-between" style="margin-bottom: var(--space-2)">
+        <span class="text-caption text-muted">회차 ${p.sessions.length}회 — 배정은 모든 회차에 함께 적용</span>
+        <span class="text-caption text-muted">회차·시간 변경은 ‘교육 편집’</span>
       </div>
-      <div class="row" style="gap: var(--space-2)">
-        <input class="input" type="date" id="addDateInput" style="height:32px; max-width:180px" />
-        <button class="btn btn-secondary btn-sm" id="addDateBtn">회차 추가</button>
+      <div class="mentor-chips">
+        ${p.sessions.map((s) => `<span class="badge badge-neutral">${Util.fmtDate(s.date)} ${Util.hhmm(s.start_time)}</span>`).join("")}
       </div>
     </div>
     ${boardSection(p, "mentor", p.needed_mentors)}
     ${boardSection(p, "facilitator", p.needed_facilitators)}`;
 
-  board.querySelectorAll("[data-rmdate]").forEach((b) =>
-    b.addEventListener("click", () => removeDate(b.dataset.rmdate, p)));
-  board.querySelector("#addDateBtn").addEventListener("click", () => {
-    const d = document.getElementById("addDateInput").value;
-    if (d) addDate(p, d);
-  });
   board.querySelectorAll("[data-board-schedule]").forEach((b) =>
     b.addEventListener("click", () => openMentorSchedule(b.dataset.boardSchedule)));
   board.querySelectorAll("[data-assign]").forEach((b) =>
@@ -431,12 +428,7 @@ async function removeDate(sessionId, program) {
   loadAll();
 }
 
-// ---------- 교육 모달 (생성=program_id 부여, 편집=전 회차 동기화) ----------
-function updateRuntime() {
-  const start = document.getElementById("sStart").value;
-  const end = document.getElementById("sEnd").value;
-  document.getElementById("sRuntime").value = start && end ? Util.durationLabel(start, end) : "";
-}
+// ---------- 교육 모달 (회차별 날짜·시간 빌더) ----------
 function selectedWeekdays() {
   return new Set([...document.querySelectorAll("#weekdays .wd-btn.active")].map((b) => Number(b.dataset.wd)));
 }
@@ -453,22 +445,55 @@ function generateRecurringDates(startISO, weekdaySet, count) {
   }
   return out;
 }
-function updateRepeatPreview() {
-  const on = document.getElementById("sRepeat").checked;
-  const preview = document.getElementById("repeatPreview");
-  document.getElementById("sDateLabel").textContent = on ? "시작 날짜" : "날짜";
-  if (!on) { preview.textContent = ""; return; }
-  const startISO = document.getElementById("sDate").value;
-  const count = parseInt(document.getElementById("sCount").value, 10) || 0;
-  if (!startISO || count < 1) { preview.textContent = "시작 날짜와 회기 수를 입력하세요."; return; }
-  const dates = generateRecurringDates(startISO, selectedWeekdays(), count);
-  if (!dates.length) { preview.textContent = ""; return; }
-  const head = dates.slice(0, 3).map(Util.fmtDate).join(", ");
-  preview.textContent = `→ ${head}${dates.length > 3 ? " …" : ""} 총 ${dates.length}회 (마지막: ${Util.fmtDate(dates[dates.length - 1])})`;
+
+function addSessionRow(date = "", start = "10:00", end = "13:00") {
+  const wrap = document.getElementById("sessionRows");
+  const row = document.createElement("div");
+  row.className = "row session-row";
+  row.style.cssText = "gap:6px; margin-bottom:6px; flex-wrap:nowrap; align-items:center";
+  row.innerHTML =
+    `<input type="date" class="input sr-date" value="${date}" style="flex:1.3; height:38px; min-width:120px" />` +
+    `<input type="time" class="input sr-start" value="${start}" style="height:38px; width:auto" />` +
+    `<span class="text-caption">~</span>` +
+    `<input type="time" class="input sr-end" value="${end}" style="height:38px; width:auto" />` +
+    `<button type="button" class="btn btn-ghost btn-sm sr-del" style="color:var(--color-info-negative)">✕</button>`;
+  row.querySelector(".sr-del").addEventListener("click", () => row.remove());
+  wrap.appendChild(row);
 }
-function onRepeatToggle() {
-  document.getElementById("repeatBox").classList.toggle("hidden", !document.getElementById("sRepeat").checked);
-  updateRepeatPreview();
+function collectSessionRows() {
+  const out = [];
+  for (const r of document.querySelectorAll("#sessionRows .session-row")) {
+    const date = r.querySelector(".sr-date").value;
+    const start = r.querySelector(".sr-start").value;
+    const end = r.querySelector(".sr-end").value;
+    if (!date) continue;
+    if (!start || !end || end <= start) return { error: "회차 시간을 확인하세요 (종료가 시작보다 늦어야 함)." };
+    out.push({ date, start, end });
+  }
+  return { rows: out };
+}
+function repeatFill() {
+  const startISO = document.getElementById("rStartDate").value;
+  const count = parseInt(document.getElementById("sCount").value, 10) || 0;
+  const start = document.getElementById("rTimeStart").value;
+  const end = document.getElementById("rTimeEnd").value;
+  if (!startISO || count < 1) return Util.toast("시작 날짜와 회기 수를 입력하세요.");
+  if (end <= start) return Util.toast("종료 시간이 시작보다 늦어야 합니다.");
+  const dates = generateRecurringDates(startISO, selectedWeekdays(), count);
+  if (!dates.length) return Util.toast("생성할 날짜가 없습니다.");
+  dates.forEach((d) => addSessionRow(d, start, end));
+  document.getElementById("repeatBox").classList.add("hidden");
+  Util.toast(`${dates.length}개 회차 추가됨. 회차별 시간은 위에서 조정하세요.`);
+}
+function updateRepeatPreview() {
+  const preview = document.getElementById("repeatPreview");
+  const startISO = document.getElementById("rStartDate").value;
+  const count = parseInt(document.getElementById("sCount").value, 10) || 0;
+  if (!startISO || count < 1) { preview.textContent = "시작 날짜·회기 수·요일을 정하세요."; return; }
+  const dates = generateRecurringDates(startISO, selectedWeekdays(), count);
+  preview.textContent = dates.length
+    ? `→ ${dates.slice(0, 3).map(Util.fmtDate).join(", ")}${dates.length > 3 ? " …" : ""} 총 ${dates.length}회`
+    : "";
 }
 
 function openModal(program, prefillDate) {
@@ -479,30 +504,29 @@ function openModal(program, prefillDate) {
   document.getElementById("sTitle").value = program?.title || "";
   document.getElementById("sNeeded").value = program?.needed_mentors ?? 1;
   document.getElementById("sNeededFac").value = program?.needed_facilitators ?? 0;
-  document.getElementById("sDate").value = editing ? program.firstDate : (prefillDate || "");
   document.getElementById("sStatus").value = program?.status || "모집중";
-  document.getElementById("sStart").value = Util.hhmm(program?.start_time) || "10:00";
-  document.getElementById("sEnd").value = Util.hhmm(program?.end_time) || "13:00";
   document.getElementById("sLocation").value = program?.location || "";
   document.getElementById("sMemo").value = program?.memo || "";
   document.getElementById("deleteSessionBtn").style.display = editing ? "" : "none";
 
-  // 편집 시: 날짜/반복 숨김(회차는 보드에서 관리). 생성 시: 반복 노출.
-  document.getElementById("sRepeat").checked = false;
+  // 회차 행 채우기
+  document.getElementById("sessionRows").innerHTML = "";
+  if (editing) program.sessions.forEach((s) => addSessionRow(s.date, Util.hhmm(s.start_time), Util.hhmm(s.end_time)));
+  else addSessionRow(prefillDate || "", "10:00", "13:00");
+
+  // 반복 채우기 박스 초기화
   document.getElementById("repeatBox").classList.add("hidden");
   document.querySelectorAll("#weekdays .wd-btn").forEach((b) => b.classList.remove("active"));
   document.getElementById("sCount").value = 4;
-  document.getElementById("repeatToggleField").style.display = editing ? "none" : "";
-  document.getElementById("sDateLabel").textContent = "날짜";
-  // 편집 모드에서는 날짜 입력칸 라벨을 안내로
-  document.getElementById("sDate").parentElement.style.display = editing ? "none" : "";
+  document.getElementById("rStartDate").value = prefillDate || "";
+  document.getElementById("rTimeStart").value = "10:00";
+  document.getElementById("rTimeEnd").value = "13:00";
+  document.getElementById("repeatPreview").textContent = "";
 
-  updateRuntime();
   document.getElementById("sessionModal").classList.remove("hidden");
 }
 function closeModal() {
   document.getElementById("sessionModal").classList.add("hidden");
-  document.getElementById("sDate").parentElement.style.display = "";
 }
 
 async function saveProgram(e) {
@@ -514,31 +538,25 @@ async function saveProgram(e) {
     needed_mentors: parseInt(document.getElementById("sNeeded").value, 10) || 0,
     needed_facilitators: parseInt(document.getElementById("sNeededFac").value, 10) || 0,
     status: document.getElementById("sStatus").value,
-    start_time: document.getElementById("sStart").value,
-    end_time: document.getElementById("sEnd").value,
     location: document.getElementById("sLocation").value.trim(),
     memo: document.getElementById("sMemo").value.trim(),
   };
-  if (base.end_time <= base.start_time) return Util.toast("종료 시간이 시작보다 늦어야 합니다.");
+  if (!base.client && !base.title) return Util.toast("회사 또는 교육 제목을 입력하세요.");
+  const col = collectSessionRows();
+  if (col.error) return Util.toast(col.error);
+  if (!col.rows.length) return Util.toast("회차를 1개 이상 추가하세요.");
+  const pid = id || uuid();
+  const sessions = col.rows.map((r) => ({ ...base, date: r.date, start_time: r.start, end_time: r.end, program_id: pid, created_by: me.id }));
 
-  let res;
+  // 삽입(새 회차) → 편집이면 기존 회차 제거 (배정은 program_id 기준이라 유지)
+  const ins = await window.sb.from("education_sessions").insert(sessions);
+  if (ins.error) return Util.toast("저장 실패: " + ins.error.message);
   if (id) {
-    // 편집: 이 교육의 모든 회차에 공통 정보 동기화 (날짜는 보드에서 관리)
-    res = await window.sb.from("education_sessions").update(base).eq("program_id", id);
-  } else {
-    const date = document.getElementById("sDate").value;
-    if (!date) return Util.toast("날짜를 입력하세요.");
-    const repeat = document.getElementById("sRepeat").checked;
-    const dates = repeat
-      ? generateRecurringDates(date, selectedWeekdays(), parseInt(document.getElementById("sCount").value, 10) || 1)
-      : [date];
-    if (!dates.length) return Util.toast("생성할 날짜가 없습니다.");
-    const pid = uuid();
-    res = await window.sb.from("education_sessions").insert(dates.map((d) => ({ ...base, date: d, program_id: pid, created_by: me.id })));
-    if (!res.error) { state.selectedProgramId = pid; Util.toast(`교육 생성 (${dates.length}회차)`); }
+    const oldIds = (state.programById[id]?.sessions || []).map((s) => s.id);
+    if (oldIds.length) await window.sb.from("education_sessions").delete().in("id", oldIds);
   }
-  if (res.error) return Util.toast("저장 실패: " + res.error.message);
-  if (id) Util.toast("교육 정보를 모든 회차에 반영했습니다.");
+  state.selectedProgramId = pid;
+  Util.toast(id ? `교육 수정 (${sessions.length}회차)` : `교육 생성 (${sessions.length}회차)`);
   closeModal();
   loadAll();
 }

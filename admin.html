@@ -130,57 +130,50 @@
           <input class="input" id="sLocation" placeholder="예: 수원 디지털시티 / 온라인(Zoom)" />
         </div>
 
-        <div class="field-row">
-          <div class="field">
-            <label for="sStart">시작 시간</label>
-            <input class="input" type="time" id="sStart" value="10:00" required />
-          </div>
-          <div class="field">
-            <label for="sEnd">종료 시간</label>
-            <input class="input" type="time" id="sEnd" value="13:00" required />
-          </div>
-          <div class="field" style="flex: 0.8">
-            <label>러닝타임</label>
-            <input class="input" id="sRuntime" readonly tabindex="-1" style="background: var(--color-bg-normal)" />
-          </div>
+        <div class="field" style="max-width: 200px">
+          <label for="sStatus">상태</label>
+          <select class="select" id="sStatus">
+            <option>모집중</option><option>확정</option><option>완료</option><option>취소</option>
+          </select>
         </div>
 
-        <div class="field-row">
-          <div class="field">
-            <label for="sDate" id="sDateLabel">날짜</label>
-            <input class="input" type="date" id="sDate" required />
+        <!-- 회차 (날짜·시간) — 회차마다 시간 다르게 가능 -->
+        <div class="field" style="border-top:1px solid var(--color-border-weak); padding-top: var(--space-4)">
+          <label>회차 (날짜·시간) <span class="text-caption text-muted">— 회차마다 시간 다르게 넣을 수 있어요</span></label>
+          <div id="sessionRows" style="margin-top: var(--space-2)"></div>
+          <div class="row" style="gap: var(--space-2); margin-top: var(--space-2)">
+            <button type="button" class="btn btn-secondary btn-sm" id="addRowBtn">+ 회차 추가</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="repeatToggleBtn">📅 매주 반복으로 채우기</button>
           </div>
-          <div class="field">
-            <label for="sStatus">상태</label>
-            <select class="select" id="sStatus">
-              <option>모집중</option><option>확정</option><option>완료</option><option>취소</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- 반복 일정 -->
-        <div class="field" id="repeatToggleField" style="border-top:1px solid var(--color-border-weak); padding-top: var(--space-4)">
-          <label class="row" style="gap: var(--space-2); cursor:pointer; font-weight: var(--font-weight-semibold); color: var(--color-fg-normal)">
-            <input type="checkbox" id="sRepeat" style="width:18px;height:18px" /> 매주 반복 (여러 회기 한 번에 생성)
-          </label>
-        </div>
-        <div id="repeatBox" class="hidden">
-          <div class="field">
-            <label>반복 요일 (여러 개 선택 가능)</label>
-            <div class="wd-group" id="weekdays">
-              <button type="button" class="wd-btn sun" data-wd="0">일</button>
-              <button type="button" class="wd-btn" data-wd="1">월</button>
-              <button type="button" class="wd-btn" data-wd="2">화</button>
-              <button type="button" class="wd-btn" data-wd="3">수</button>
-              <button type="button" class="wd-btn" data-wd="4">목</button>
-              <button type="button" class="wd-btn" data-wd="5">금</button>
-              <button type="button" class="wd-btn" data-wd="6">토</button>
+          <div id="repeatBox" class="hidden" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-bg-normal); border-radius: var(--radius-medium)">
+            <div class="field-row">
+              <div class="field">
+                <label for="rStartDate">시작 날짜</label>
+                <input class="input" type="date" id="rStartDate" />
+              </div>
+              <div class="field" style="flex:0.7">
+                <label for="sCount">회기 수</label>
+                <input class="input" type="number" id="sCount" min="1" max="60" value="4" />
+              </div>
             </div>
-          </div>
-          <div class="field">
-            <label for="sCount">총 회기 수 (몇 회 진행)</label>
-            <input class="input" type="number" id="sCount" min="1" max="60" value="4" />
-            <p class="text-caption text-muted" id="repeatPreview" style="margin-top: var(--space-1)"></p>
+            <div class="field">
+              <label>요일 (여러 개 가능)</label>
+              <div class="wd-group" id="weekdays">
+                <button type="button" class="wd-btn sun" data-wd="0">일</button>
+                <button type="button" class="wd-btn" data-wd="1">월</button>
+                <button type="button" class="wd-btn" data-wd="2">화</button>
+                <button type="button" class="wd-btn" data-wd="3">수</button>
+                <button type="button" class="wd-btn" data-wd="4">목</button>
+                <button type="button" class="wd-btn" data-wd="5">금</button>
+                <button type="button" class="wd-btn" data-wd="6">토</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label for="rTimeStart">시작 시간</label><input class="input" type="time" id="rTimeStart" value="10:00" /></div>
+              <div class="field"><label for="rTimeEnd">종료 시간</label><input class="input" type="time" id="rTimeEnd" value="13:00" /></div>
+            </div>
+            <p class="text-caption text-muted" id="repeatPreview" style="margin-bottom: var(--space-2)"></p>
+            <button type="button" class="btn btn-primary btn-sm btn-block" id="repeatFillBtn">이 설정으로 회차 채우기</button>
           </div>
         </div>
 
