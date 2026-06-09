@@ -1,0 +1,187 @@
+/* ==========================================================================
+   LIKELION Design System — Design Tokens
+   출처: likelion-docs MCP (@likelion-design) — designsystem.likelion.net
+   color/spacing 은 prebuilt 토큰 원본 값, radius/font 는 파운데이션 문서 기준.
+   ========================================================================== */
+
+:root {
+  /* ----------------------------------------------------------------------
+     Primitive — Brand (Primary / Orange)
+     ---------------------------------------------------------------------- */
+  --color-primary-50: #ffefe5;
+  --color-primary-100: #ffdfcc;
+  --color-primary-200: #ffbf99;
+  --color-primary-300: #ffa066;
+  --color-primary-400: #ff8033;
+  --color-primary-500: #ff6000;
+  --color-primary-600: #cc4d00;
+  --color-primary-700: #993a00;
+  --color-primary-800: #662600;
+  --color-primary-900: #4d1d00;
+
+  /* ----------------------------------------------------------------------
+     Primitive — Gray scale
+     ---------------------------------------------------------------------- */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7ea;
+  --color-gray-300: #d1d6dc;
+  --color-gray-400: #b1b8c0;
+  --color-gray-500: #8a95a0;
+  --color-gray-600: #6b7583;
+  --color-gray-700: #4e5967;
+  --color-gray-800: #333d4b;
+  --color-gray-850: #262f3c;
+  --color-gray-900: #191f28;
+  --color-gray-950: #191c1f;
+
+  /* ----------------------------------------------------------------------
+     Primitive — Status / Accent (50 = weak bg, 500 = fg, 600 = strong)
+     ---------------------------------------------------------------------- */
+  --color-red-50: #fdf0f3;
+  --color-red-500: #f64c4c;
+  --color-red-600: #e12337;
+
+  --color-green-50: #e4faf5;
+  --color-green-500: #0da796;
+  --color-green-600: #05806d;
+
+  --color-light-green-50: #f2fde3;
+  --color-light-green-500: #79b116;
+
+  --color-blue-50: #e5f5ff;
+  --color-blue-500: #3d94ff;
+  --color-blue-600: #2077e5;
+
+  --color-yellow-50: #fff8e4;
+  --color-yellow-500: #ffb700;
+
+  --color-purple-50: #f9efff;
+  --color-purple-500: #af79dd;
+
+  --color-pink-50: #fff3ff;
+  --color-pink-500: #d3689f;
+
+  --color-basic-white: #ffffff;
+  --color-basic-black: #000000;
+
+  /* ----------------------------------------------------------------------
+     Semantic — Foreground (text / icon)
+     ---------------------------------------------------------------------- */
+  --color-fg-primary: var(--color-primary-500);
+  --color-fg-pressed: var(--color-primary-600);
+  --color-fg-strong: var(--color-gray-900);
+  --color-fg-normal: var(--color-gray-800);
+  --color-fg-neutral: var(--color-gray-700);
+  --color-fg-alternative: var(--color-gray-600);
+  --color-fg-assistive: var(--color-gray-500);
+  --color-fg-disabled: var(--color-gray-400);
+  --color-fg-white: var(--color-basic-white);
+
+  /* ----------------------------------------------------------------------
+     Semantic — Background
+     ---------------------------------------------------------------------- */
+  --color-bg-normal: var(--color-gray-100);
+  --color-bg-normal-hovered: var(--color-gray-50);
+  --color-bg-normal-alternative: var(--color-gray-200);
+  --color-bg-disabled: var(--color-gray-100);
+  --color-bg-inverted: var(--color-gray-950);
+  --color-bg-primary: var(--color-primary-500);
+  --color-bg-primary-hovered: var(--color-primary-600);
+  --color-bg-primary-weak: var(--color-primary-50);
+  --color-bg-white: var(--color-basic-white);
+  --color-bg-surface: var(--color-basic-white);
+
+  /* ----------------------------------------------------------------------
+     Semantic — Border
+     ---------------------------------------------------------------------- */
+  --color-border-primary: var(--color-primary-500);
+  --color-border-strong: var(--color-gray-800);
+  --color-border-normal: var(--color-gray-300);
+  --color-border-weak: var(--color-gray-200);
+
+  /* ----------------------------------------------------------------------
+     Semantic — Info (status)
+     ---------------------------------------------------------------------- */
+  --color-info-negative: var(--color-red-600);
+  --color-info-positive: var(--color-light-green-500);
+
+  /* ----------------------------------------------------------------------
+     Style — Gradation / Dim
+     ---------------------------------------------------------------------- */
+  --color-style-gradation-primary: linear-gradient(90deg, var(--color-primary-300) 0%, var(--color-primary-500) 97.86%);
+  --color-style-dim: rgba(0, 0, 0, 0.5);
+
+  /* ----------------------------------------------------------------------
+     Spacing — Primitive (1 unit = 4px)
+     ---------------------------------------------------------------------- */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-25: 100px;
+
+  /* ----------------------------------------------------------------------
+     Radius — 표준형 (Shape 파운데이션: 2~12px)
+     ---------------------------------------------------------------------- */
+  --radius-xsmall: 2px;
+  --radius-small: 4px;
+  --radius-medium: 8px;
+  --radius-large: 12px;
+  --radius-xlarge: 16px;
+  --radius-full: 9999px;
+
+  /* ----------------------------------------------------------------------
+     Typography — Pretendard (LIKELION DS 표준 한글 폰트)
+     ---------------------------------------------------------------------- */
+  --font-family-base: "Pretendard", "Pretendard Variable", -apple-system,
+    BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", system-ui,
+    "Segoe UI", Roboto, sans-serif;
+
+  --font-size-display: 28px;
+  --font-size-title: 22px;
+  --font-size-heading: 18px;
+  --font-size-body: 15px;
+  --font-size-label: 14px;
+  --font-size-caption: 12px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.3;
+  --line-height-normal: 1.5;
+
+  /* ----------------------------------------------------------------------
+     Elevation — shadow
+     ---------------------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(25, 31, 40, 0.06), 0 1px 3px rgba(25, 31, 40, 0.08);
+  --shadow-md: 0 4px 12px rgba(25, 31, 40, 0.08), 0 2px 4px rgba(25, 31, 40, 0.06);
+  --shadow-lg: 0 12px 32px rgba(25, 31, 40, 0.12);
+
+  /* ----------------------------------------------------------------------
+     App-specific — 비대칭 공개 모델의 일정 3색 구분
+     기업교육 세션(공통) / 내 개인일정 / 내 배정
+     ---------------------------------------------------------------------- */
+  --cal-session-bg: var(--color-blue-50);
+  --cal-session-fg: var(--color-blue-600);
+  --cal-session-border: var(--color-blue-500);
+
+  --cal-block-bg: var(--color-gray-100);
+  --cal-block-fg: var(--color-gray-700);
+  --cal-block-border: var(--color-gray-400);
+
+  --cal-assigned-bg: var(--color-primary-50);
+  --cal-assigned-fg: var(--color-primary-600);
+  --cal-assigned-border: var(--color-primary-500);
+}

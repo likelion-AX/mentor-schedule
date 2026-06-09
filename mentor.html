@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>내 일정 · 멘토 일정 관리</title>
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span class="dot"></span> 멘토 일정 관리</div>
+    <nav class="row hidden" style="gap: var(--space-1)" id="topNav">
+      <a class="btn btn-ghost btn-sm" href="mentor.html" aria-current="page">내 일정</a>
+      <a class="btn btn-ghost btn-sm" href="admin.html" id="adminLink">운영팀</a>
+    </nav>
+    <div class="user-area" id="userArea"></div>
+  </header>
+
+  <main class="page">
+    <h1 class="page-title">내 일정</h1>
+    <p class="page-subtitle">
+      본인이 배정받은 교육과 개인 일정이 표시됩니다. 개인 일정은 본인과 운영팀만 볼 수 있어요.
+    </p>
+
+    <div class="mentor-grid">
+      <!-- 내 배정 현황 (모바일에선 맨 위) -->
+      <div class="card area-assign">
+        <div class="card-title">내 배정 현황</div>
+        <div id="myAssignments" class="stack"></div>
+      </div>
+
+      <!-- 캘린더 -->
+      <div class="card area-calendar">
+        <div class="legend">
+          <span class="legend-item"><span class="legend-swatch assigned"></span> 내 배정 교육</span>
+          <span class="legend-item"><span class="legend-swatch block"></span> 내 개인 일정</span>
+        </div>
+        <div id="calendar"></div>
+        <!-- 모바일: 선택한 날짜의 일정 -->
+        <div id="dayDetail" class="day-detail"></div>
+      </div>
+
+      <!-- 개인 일정 등록 -->
+      <div class="card area-personal">
+        <div class="card-title">개인 일정 등록</div>
+        <p class="text-caption text-muted" style="margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-4)">
+          배정 충돌 방지를 위한 가용 불가 시간입니다. 멘토끼리는 비공개.
+        </p>
+        <form id="blockForm">
+          <div class="field">
+            <label for="bDate">날짜</label>
+            <input class="input" type="date" id="bDate" required />
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="bStart">시작</label>
+              <input class="input" type="time" id="bStart" value="09:00" required />
+            </div>
+            <div class="field">
+              <label for="bEnd">종료</label>
+              <input class="input" type="time" id="bEnd" value="18:00" required />
+            </div>
+          </div>
+          <div class="field">
+            <label for="bMemo">메모 (선택)</label>
+            <input class="input" type="text" id="bMemo" placeholder="예: 타 교육, 개인 사정" />
+          </div>
+          <button class="btn btn-primary btn-block" type="submit">개인 일정 추가</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/mentor.js"></script>
+</body>
+</html>

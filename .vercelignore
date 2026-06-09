@@ -1,0 +1,7 @@
+# Vercel 이 "서빙하지 않을" 것 (스키마/문서/로그 노출 방지)
+supabase/
+SETUP.md
+*.log
+serve.log
+_verify/
+node_modules/

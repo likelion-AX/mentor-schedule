@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>멘토 일정 관리 · 로그인</title>
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="auth-screen">
+    <div class="auth-card">
+      <div class="logo-dot"></div>
+      <h1 class="page-title" style="margin-bottom: var(--space-2)">멘토 일정 관리</h1>
+      <p class="text-muted" style="margin-bottom: var(--space-8)">
+        이메일로 로그인하세요.<br />
+        멘토는 가용 시간을, 운영팀은 세션 배정을 관리합니다.
+      </p>
+
+      <form id="emailForm" style="text-align:left">
+        <div class="field" id="nameField" style="display:none">
+          <label for="fName">이름 (운영팀에 등록된 본인 이름)</label>
+          <input class="input" type="text" id="fName" placeholder="예: 홍길동" />
+        </div>
+        <div class="field">
+          <label for="fEmail">이메일</label>
+          <input class="input" type="email" id="fEmail" placeholder="자주 쓰는 이메일" autocomplete="username" required />
+        </div>
+        <div class="field">
+          <label for="fPassword">비밀번호</label>
+          <input class="input" type="password" id="fPassword" placeholder="6자 이상" minlength="6" autocomplete="current-password" required />
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" id="submitBtn">로그인</button>
+      </form>
+
+      <p class="text-caption text-muted mt-4" id="toggleHint" style="cursor:pointer">
+        처음이신가요? <a id="toggleLink">회원가입</a>
+      </p>
+      <p class="text-caption" id="hint" style="margin-top: var(--space-2); min-height: 16px"></p>
+      <p class="text-caption text-muted mt-4">처음이면 회원가입 → <b>운영팀에 등록된 이름</b>으로 가입하면 자동 연결돼요.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    (async () => {
+      const hint = document.getElementById("hint");
+      const nameField = document.getElementById("nameField");
+      const submitBtn = document.getElementById("submitBtn");
+      const toggleHint = document.getElementById("toggleHint");
+      let mode = "login";
+
+      // 이미 로그인 상태면 역할에 따라 자동 이동
+      const session = await Auth.getSession();
+      if (session) {
+        const profile = await Auth.getProfile();
+        window.location.href = profile.role === "admin" ? "admin.html" : "mentor.html";
+        return;
+      }
+
+      function setMode(m) {
+        mode = m;
+        if (m === "signup") {
+          nameField.style.display = "";
+          submitBtn.textContent = "회원가입";
+          toggleHint.innerHTML = '이미 계정이 있으신가요? <a id="toggleLink">로그인</a>';
+          hint.style.color = "var(--color-fg-assistive)";
+          hint.textContent = "운영팀에 등록된 본인 이름으로 가입하면 자동 연결돼요.";
+        } else {
+          nameField.style.display = "none";
+          submitBtn.textContent = "로그인";
+          toggleHint.innerHTML = '처음이신가요? <a id="toggleLink">회원가입</a>';
+          hint.textContent = "";
+        }
+        toggleHint.querySelector("#toggleLink").addEventListener("click", () =>
+          setMode(mode === "login" ? "signup" : "login"));
+      }
+      setMode("login");
+
+      document.getElementById("emailForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email = document.getElementById("fEmail").value.trim();
+        const password = document.getElementById("fPassword").value;
+        const name = document.getElementById("fName").value.trim();
+        hint.style.color = "var(--color-info-negative)";
+        if (mode === "signup" && !name) { hint.textContent = "이름을 입력하세요 (운영팀에 등록된 이름)."; return; }
+        submitBtn.disabled = true;
+        try {
+          if (mode === "signup") {
+            const { data, error } = await Auth.signUpWithEmail(email, password, name);
+            if (error) {
+              hint.textContent = /database error|saving new user/i.test(error.message)
+                ? "초대되지 않은 이메일이거나 이미 가입된 이메일이에요. 운영팀에 문의하세요."
+                : error.message;
+              return;
+            }
+            if (!data.session) {
+              hint.style.color = "var(--color-info-positive)";
+              hint.textContent = "가입 완료! 로그인으로 들어가세요.";
+              setMode("login");
+              return;
+            }
+          } else {
+            const { error } = await Auth.signInWithEmail(email, password);
+            if (error) { hint.textContent = "로그인 실패: 이메일/비밀번호를 확인하세요."; return; }
+          }
+          const profile = await Auth.getProfile();
+          window.location.href = profile.role === "admin" ? "admin.html" : "mentor.html";
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

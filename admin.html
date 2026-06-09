@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>운영팀 · 멘토 일정 관리</title>
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span class="dot"></span> 멘토 일정 관리</div>
+    <nav class="row" style="gap: var(--space-1)">
+      <a class="btn btn-ghost btn-sm" href="mentor.html">내 일정</a>
+      <a class="btn btn-ghost btn-sm" href="admin.html" aria-current="page">운영팀</a>
+    </nav>
+    <div class="user-area" id="userArea"></div>
+  </header>
+
+  <main class="page wide">
+    <div class="row-between" style="margin-bottom: var(--space-2)">
+      <div>
+        <h1 class="page-title" style="margin:0">교육 일정 & 배정</h1>
+        <p class="page-subtitle" style="margin:0">
+          배정은 <strong>교육 단위</strong>예요 — 한 번 배정하면 그 교육의 모든 회차에 적용됩니다. 빈 날짜를 클릭해 교육을 추가하세요.
+        </p>
+      </div>
+      <button class="btn btn-primary" id="newSessionBtn">+ 새 교육</button>
+    </div>
+
+    <!-- 캘린더(좌) + 배정 보드(우) -->
+    <div class="grid-calboard">
+      <div class="card" style="padding: var(--space-4)">
+        <div class="legend" style="margin-bottom: var(--space-3)">
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--color-yellow-50);border-color:var(--color-yellow-500)"></span> 모집중</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--color-light-green-50);border-color:var(--color-light-green-500)"></span> 확정</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--color-gray-100);border-color:var(--color-gray-400)"></span> 완료</span>
+        </div>
+        <div id="calendar"></div>
+      </div>
+
+      <div class="board-col">
+        <div class="card">
+          <div id="boardHead" class="row-between" style="margin-bottom: var(--space-4)">
+            <div class="card-title" style="margin:0">배정 보드</div>
+          </div>
+          <div id="board">
+            <div class="empty-state">캘린더에서 일정을 클릭하세요.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 전체 일정 목록 (회사·러닝타임·장소·담당 멘토 한눈에) -->
+    <div class="card" style="margin-top: var(--space-6)">
+      <div class="card-title">전체 교육 목록</div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>일정</th><th>회사 / 교육</th><th>시간</th><th>러닝타임</th>
+            <th>장소</th><th>담당</th><th>상태</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="sessionList"></tbody>
+      </table>
+    </div>
+
+    <!-- 명단 관리 (멘토 / 퍼실리테이터 분리) -->
+    <div class="grid-2" style="margin-top: var(--space-6)">
+      <div class="card">
+        <div class="row-between" style="margin-bottom: var(--space-3)">
+          <div class="card-title" style="margin:0">멘토 명단</div>
+          <button class="btn btn-primary btn-sm" data-invite="mentor">+ 멘토 추가</button>
+        </div>
+        <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+          초대한 아이디만 가입할 수 있어요. 비밀번호는 본인이 가입 시 정합니다.
+        </p>
+        <table class="table">
+          <thead><tr><th>이름</th><th>이메일</th><th>상태</th><th></th></tr></thead>
+          <tbody id="mentorRosterList"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="row-between" style="margin-bottom: var(--space-3)">
+          <div class="card-title" style="margin:0">퍼실리테이터 명단</div>
+          <button class="btn btn-primary btn-sm" data-invite="facilitator">+ 퍼실 추가</button>
+        </div>
+        <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+          퍼실리테이터도 초대받은 아이디로 로그인해 본인 배정을 확인합니다.
+        </p>
+        <table class="table">
+          <thead><tr><th>이름</th><th>이메일</th><th>상태</th><th></th></tr></thead>
+          <tbody id="facRosterList"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- 세션 생성/편집 모달 -->
+  <div class="modal-backdrop hidden" id="sessionModal">
+    <div class="modal modal-lg">
+      <div class="modal-title" id="modalTitle">새 일정</div>
+      <form id="sessionForm">
+        <input type="hidden" id="sId" />
+
+        <div class="field-row">
+          <div class="field" style="flex: 1.4">
+            <label for="sClient">회사 (고객사)</label>
+            <input class="input" id="sClient" required placeholder="예: 삼성전자" />
+          </div>
+          <div class="field">
+            <label for="sNeeded">멘토 수</label>
+            <input class="input" type="number" id="sNeeded" min="0" value="1" />
+          </div>
+          <div class="field">
+            <label for="sNeededFac">퍼실 수</label>
+            <input class="input" type="number" id="sNeededFac" min="0" value="0" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="sTitle">교육 제목</label>
+          <input class="input" id="sTitle" required placeholder="예: AI 기초 사내교육" />
+        </div>
+
+        <div class="field">
+          <label for="sLocation">장소</label>
+          <input class="input" id="sLocation" placeholder="예: 수원 디지털시티 / 온라인(Zoom)" />
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="sStart">시작 시간</label>
+            <input class="input" type="time" id="sStart" value="10:00" required />
+          </div>
+          <div class="field">
+            <label for="sEnd">종료 시간</label>
+            <input class="input" type="time" id="sEnd" value="13:00" required />
+          </div>
+          <div class="field" style="flex: 0.8">
+            <label>러닝타임</label>
+            <input class="input" id="sRuntime" readonly tabindex="-1" style="background: var(--color-bg-normal)" />
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="sDate" id="sDateLabel">날짜</label>
+            <input class="input" type="date" id="sDate" required />
+          </div>
+          <div class="field">
+            <label for="sStatus">상태</label>
+            <select class="select" id="sStatus">
+              <option>모집중</option><option>확정</option><option>완료</option><option>취소</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 반복 일정 -->
+        <div class="field" id="repeatToggleField" style="border-top:1px solid var(--color-border-weak); padding-top: var(--space-4)">
+          <label class="row" style="gap: var(--space-2); cursor:pointer; font-weight: var(--font-weight-semibold); color: var(--color-fg-normal)">
+            <input type="checkbox" id="sRepeat" style="width:18px;height:18px" /> 매주 반복 (여러 회기 한 번에 생성)
+          </label>
+        </div>
+        <div id="repeatBox" class="hidden">
+          <div class="field">
+            <label>반복 요일 (여러 개 선택 가능)</label>
+            <div class="wd-group" id="weekdays">
+              <button type="button" class="wd-btn sun" data-wd="0">일</button>
+              <button type="button" class="wd-btn" data-wd="1">월</button>
+              <button type="button" class="wd-btn" data-wd="2">화</button>
+              <button type="button" class="wd-btn" data-wd="3">수</button>
+              <button type="button" class="wd-btn" data-wd="4">목</button>
+              <button type="button" class="wd-btn" data-wd="5">금</button>
+              <button type="button" class="wd-btn" data-wd="6">토</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="sCount">총 회기 수 (몇 회 진행)</label>
+            <input class="input" type="number" id="sCount" min="1" max="60" value="4" />
+            <p class="text-caption text-muted" id="repeatPreview" style="margin-top: var(--space-1)"></p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="sMemo">메모</label>
+          <textarea class="textarea" id="sMemo"></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-danger" id="deleteSessionBtn">삭제</button>
+          <button type="button" class="btn btn-secondary" id="cancelModalBtn">취소</button>
+          <button type="submit" class="btn btn-primary">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 명단 추가/수정 모달 (멘토/퍼실 공용) -->
+  <div class="modal-backdrop hidden" id="inviteModal">
+    <div class="modal">
+      <div class="modal-title" id="inviteModalTitle">멘토 초대</div>
+      <form id="inviteForm">
+        <input type="hidden" id="iEditEmail" value="" />
+        <div class="field">
+          <label for="iName">이름</label>
+          <input class="input" id="iName" required placeholder="예: 최멘토" />
+        </div>
+        <div class="field">
+          <label for="iEmailInput">이메일 (선택 — 모르면 비워두세요)</label>
+          <input class="input" type="email" id="iEmailInput" placeholder="모르면 비워두기" autocomplete="off" />
+          <p class="text-caption text-muted" id="iEmailHint" style="margin-top: var(--space-1)">
+            비워두면 멘토가 <b>본인 이름</b>으로 가입할 때 자동 연결됩니다. 이메일을 알면 넣어도 돼요(알림이 더 빨라요).
+          </p>
+        </div>
+        <div class="field">
+          <label for="iStaffType">구분</label>
+          <select class="select" id="iStaffType">
+            <option value="mentor">멘토</option>
+            <option value="facilitator">퍼실리테이터</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="row" style="gap: var(--space-2); cursor:pointer; color: var(--color-fg-normal)">
+            <input type="checkbox" id="iAdmin" style="width:18px;height:18px" /> 운영팀(관리자) 권한 부여
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-danger" id="deletePersonBtn" style="display:none">삭제</button>
+          <button type="button" class="btn btn-secondary" id="cancelInviteBtn">취소</button>
+          <button type="submit" class="btn btn-primary" id="inviteSubmitBtn">초대 추가</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 멘토 스케줄 모달 -->
+  <div class="modal-backdrop hidden" id="mentorScheduleModal">
+    <div class="modal modal-lg" style="max-width: 820px">
+      <div class="row-between" style="margin-bottom: var(--space-2)">
+        <div class="modal-title" id="msTitle" style="margin:0">멘토 스케줄</div>
+        <button class="btn btn-ghost btn-sm" id="msClose">닫기</button>
+      </div>
+      <div id="msSummary" class="text-caption text-muted" style="margin-bottom: var(--space-3)"></div>
+      <div class="legend" style="margin-bottom: var(--space-2)">
+        <span class="legend-item"><span class="legend-swatch assigned"></span> 배정 교육</span>
+        <span class="legend-item"><span class="legend-swatch block"></span> 개인 일정</span>
+      </div>
+      <div id="msCalendar"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>

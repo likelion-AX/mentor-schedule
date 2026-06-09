@@ -1,0 +1,9 @@
+# 의존성/로그/임시
+node_modules/
+*.log
+serve.log
+_verify/
+_*/
+.vercel/
+.DS_Store
+Thumbs.db
