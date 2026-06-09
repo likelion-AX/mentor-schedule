@@ -490,7 +490,16 @@ a:hover { text-decoration: underline; }
 .ev .ev-mentors { font-size: 11px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ev .ev-mentors.none { color: var(--color-info-negative); font-weight: var(--font-weight-semibold); }
 .fc .fc-daygrid-event { white-space: normal; }
-.fc-admin .fc-daygrid-day-frame { min-height: 96px; }
+.fc-admin .fc-daygrid-day-frame { min-height: 110px; }
+/* 같은 날 여러 교육: 카드처럼 띄워서 구분 */
+.fc-admin .fc-daygrid-event-harness { margin-bottom: 6px; }
+.fc-admin .fc-daygrid-day-events { padding: 4px 3px; }
+.fc-admin .fc-daygrid-event {
+  border-radius: 7px;
+  box-shadow: 0 1px 3px rgba(25, 31, 40, 0.1);
+  border-width: 1px;
+}
+.fc-admin .ev { padding: 5px 6px; }
 
 /* 멘토 칩(담당 한눈에) */
 .mentor-chip {
