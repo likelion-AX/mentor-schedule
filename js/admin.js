@@ -21,6 +21,14 @@ let state = {
 const TYPE_LABEL = { mentor: "멘토", facilitator: "퍼실리테이터" };
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "p-" + Date.now() + "-" + Math.floor(Math.random() * 1e9));
 
+// 교육(프로그램)마다 고유 색 — 같은 날 여러 교육 구별용
+const PROG_COLORS = ["#FF6000", "#2077E5", "#0DA796", "#9855D4", "#D3689F", "#CB9100", "#E12337", "#4A7F05", "#3D94FF", "#005448"];
+function progColor(pid) {
+  let h = 0;
+  for (let i = 0; i < pid.length; i++) h = (h * 31 + pid.charCodeAt(i)) >>> 0;
+  return PROG_COLORS[h % PROG_COLORS.length];
+}
+
 async function init() {
   me = await Auth.requireAuth({ admin: true });
   Auth.renderUserArea(me, document.getElementById("userArea"));
@@ -179,9 +187,13 @@ function setupCalendar() {
       const dur = Util.durationLabel(s.start_time, s.end_time);
       const mc = `${confirmedCount(pid, "mentor")}/${s.needed_mentors}`;
       const fc = s.needed_facilitators ? ` · 퍼실 ${confirmedCount(pid, "facilitator")}/${s.needed_facilitators}` : "";
+      const top = s.client || s.title;
+      const sub = s.client && s.title && s.title !== s.client ? s.title : "";
+      const color = progColor(pid);
       return {
-        html: `<div class="ev">
-          <div class="ev-client">${Util.escapeHtml(s.client || s.title)}</div>
+        html: `<div class="ev" style="border-left:4px solid ${color}; padding-left:5px">
+          <div class="ev-client">${Util.escapeHtml(top)}</div>
+          ${sub ? `<div class="ev-meta" style="font-weight:700; color:${color}">${Util.escapeHtml(sub)}</div>` : ""}
           <div class="ev-meta">${Util.hhmm(s.start_time)}~${Util.hhmm(s.end_time)} · ${dur} · 👥${mc}${fc}</div>
           <div class="ev-mentors ${mentors ? "" : "none"}">${mentors ? "👤 " + Util.escapeHtml(mentors) : "멘토 미배정"}</div>
           ${facs ? `<div class="ev-mentors">🧑‍🏫 ${Util.escapeHtml(facs)}</div>` : ""}
