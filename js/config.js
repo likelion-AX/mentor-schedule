@@ -22,3 +22,8 @@ window.sb = window.supabase.createClient(
   window.APP_CONFIG.SUPABASE_URL,
   window.APP_CONFIG.SUPABASE_ANON_KEY
 );
+
+// PWA — 서비스워커 등록 (앱처럼 설치 가능)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
