@@ -31,7 +31,12 @@
           배정은 <strong>교육 단위</strong>예요 — 한 번 배정하면 그 교육의 모든 회차에 적용됩니다. 빈 날짜를 클릭해 교육을 추가하세요.
         </p>
       </div>
-      <button class="btn btn-primary" id="newSessionBtn">+ 새 교육</button>
+      <div class="row" style="gap: var(--space-1); align-items:center">
+        <input class="input" id="imgSearch" list="programNames" placeholder="🖼 교육명 입력 → 일정 이미지" style="width: 250px" />
+        <datalist id="programNames"></datalist>
+        <button class="btn btn-secondary" id="imgSearchBtn">호출</button>
+        <button class="btn btn-primary" id="newSessionBtn">+ 새 교육</button>
+      </div>
     </div>
 
     <!-- 캘린더(좌) + 배정 보드(우) -->
@@ -231,6 +236,24 @@
           <button type="submit" class="btn btn-primary" id="inviteSubmitBtn">초대 추가</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- 일정 안내 이미지 모달 -->
+  <div class="modal-backdrop hidden" id="shareImageModal">
+    <div class="modal modal-lg" style="max-width: 640px">
+      <div class="row-between" style="margin-bottom: var(--space-3)">
+        <div class="modal-title" style="margin:0">일정 안내 이미지</div>
+        <button class="btn btn-ghost btn-sm" id="shareImgClose">닫기</button>
+      </div>
+      <p class="text-caption text-muted" style="margin-bottom: var(--space-2)">
+        아래 이미지를 복사하거나 저장해서 멘토에게 카톡·슬랙으로 보내세요.
+      </p>
+      <div id="shareImgPreview" style="max-height: 58vh; overflow:auto; border:1px solid var(--color-border-weak); border-radius: var(--radius-medium); background: var(--color-bg-normal)"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="shareImgCopyBtn">📋 클립보드 복사</button>
+        <button class="btn btn-primary" id="shareImgDownloadBtn">⬇ PNG 다운로드</button>
+      </div>
     </div>
   </div>
 

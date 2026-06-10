@@ -49,6 +49,24 @@ async function init() {
   document.querySelectorAll("#weekdays .wd-btn").forEach((b) =>
     b.addEventListener("click", () => { b.classList.toggle("active"); updateRepeatPreview(); }));
 
+  const imgSearch = document.getElementById("imgSearch");
+  document.getElementById("imgSearchBtn").addEventListener("click", () => callScheduleImage(imgSearch.value.trim()));
+  imgSearch.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); callScheduleImage(imgSearch.value.trim()); }
+  });
+  // 자동완성 목록에서 고르면 바로 이미지 열기
+  imgSearch.addEventListener("change", () => {
+    const q = imgSearch.value.trim();
+    if (q && findProgramsByName(q).length === 1) callScheduleImage(q);
+  });
+
+  document.getElementById("shareImgClose").addEventListener("click", closeShareImage);
+  document.getElementById("shareImageModal").addEventListener("click", (e) => {
+    if (e.target.id === "shareImageModal") closeShareImage();
+  });
+  document.getElementById("shareImgDownloadBtn").addEventListener("click", downloadShareImage);
+  document.getElementById("shareImgCopyBtn").addEventListener("click", copyShareImage);
+
   document.getElementById("msClose").addEventListener("click", closeMentorSchedule);
   document.getElementById("mentorScheduleModal").addEventListener("click", (e) => {
     if (e.target.id === "mentorScheduleModal") closeMentorSchedule();
@@ -98,9 +116,18 @@ async function loadAll() {
   renderCalendar();
   renderProgramList();
   renderRosters();
+  fillProgramDatalist();
   if (state.selectedProgramId && !state.programById[state.selectedProgramId]) state.selectedProgramId = null;
   renderBoard();
+
+  // URL로 바로 호출: admin.html?img=교육명
+  if (!urlImgHandled) {
+    urlImgHandled = true;
+    const q = new URLSearchParams(location.search).get("img");
+    if (q) callScheduleImage(q);
+  }
 }
+let urlImgHandled = false;
 
 function buildPrograms() {
   const map = {};
@@ -265,6 +292,7 @@ function renderProgramList() {
           </td>
           <td><span class="badge badge-status-${statusCls}">${p.status}</span></td>
           <td style="text-align:right; white-space:nowrap">
+            <button class="btn btn-ghost btn-sm" data-img="${p.id}" title="멘토 공유용 안내 이미지">🖼 이미지</button>
             <button class="btn btn-ghost btn-sm" data-edit="${p.id}">편집</button>
           </td>
         </tr>`;
@@ -273,7 +301,7 @@ function renderProgramList() {
 
   tbody.querySelectorAll("[data-row]").forEach((tr) =>
     tr.addEventListener("click", (e) => {
-      if (e.target.closest("[data-edit]")) return;
+      if (e.target.closest("[data-edit],[data-img]")) return;
       state.selectedProgramId = tr.dataset.row;
       renderBoard();
       renderProgramList();
@@ -284,6 +312,8 @@ function renderProgramList() {
       const p = state.programById[b.dataset.edit];
       if (p) openModal(p);
     }));
+  tbody.querySelectorAll("[data-img]").forEach((b) =>
+    b.addEventListener("click", () => openShareImage(b.dataset.img)));
 }
 
 // ---------- 배정 보드 (교육 단위) ----------
@@ -301,8 +331,12 @@ function renderBoard() {
       <div class="card-title" style="margin:0">${Util.escapeHtml(p.client || p.title)}</div>
       <div class="text-caption text-muted">${Util.escapeHtml(p.title)} · ${p.timeVaries ? p.sessions.length + "회차(시간 상이)" : Util.hhmm(p.start_time) + "~" + Util.hhmm(p.end_time) + " · " + Util.durationLabel(p.start_time, p.end_time)}</div>
     </div>
-    <button class="btn btn-secondary btn-sm" id="editSessionBtn">교육 편집</button>`;
+    <div class="row" style="gap: var(--space-1)">
+      <button class="btn btn-secondary btn-sm" id="shareImgBtn" title="멘토 공유용 안내 이미지">🖼 안내 이미지</button>
+      <button class="btn btn-secondary btn-sm" id="editSessionBtn">교육 편집</button>
+    </div>`;
   head.querySelector("#editSessionBtn").addEventListener("click", () => openModal(p));
+  head.querySelector("#shareImgBtn").addEventListener("click", () => openShareImage(p.id));
 
   board.innerHTML = `
     <div style="margin-bottom: var(--space-5)">
@@ -738,6 +772,255 @@ async function deleteInvite(email) {
   if (error) return Util.toast("삭제 실패: " + error.message);
   Util.toast("초대를 삭제했습니다.");
   loadAll();
+}
+
+// ---------- 교육명으로 일정 이미지 호출 ----------
+function normProgName(s) {
+  return (s || "").toLowerCase().replace(/[\s—–-]+/g, "");
+}
+function progLabel(p) {
+  return p.client && p.title && p.title !== p.client ? `${p.client} — ${p.title}` : (p.client || p.title);
+}
+function findProgramsByName(query) {
+  const q = normProgName(query);
+  if (!q) return [];
+  const cands = (p) => [p.client, p.title, `${p.client || ""}${p.title || ""}`].map(normProgName);
+  const exact = state.programs.filter((p) => cands(p).includes(q));
+  if (exact.length) return exact;
+  return state.programs.filter((p) => cands(p).some((c) => c && c.includes(q)));
+}
+function callScheduleImage(query) {
+  if (!query) return Util.toast("교육명(또는 회사명)을 입력하세요.");
+  const matches = findProgramsByName(query);
+  if (!matches.length) return Util.toast(`'${query}' 교육을 찾지 못했어요.`);
+  if (matches.length > 1) Util.toast(`${matches.length}개 교육이 검색돼 첫 번째(${progLabel(matches[0])})를 보여드려요.`);
+  state.selectedProgramId = matches[0].id;
+  renderBoard();
+  renderProgramList();
+  openShareImage(matches[0].id);
+}
+function fillProgramDatalist() {
+  const dl = document.getElementById("programNames");
+  if (!dl) return;
+  dl.innerHTML = state.programs
+    .map((p) => `<option value="${Util.escapeHtml(progLabel(p))}">${programDatesLabel(p)}</option>`)
+    .join("");
+}
+
+// ---------- 일정 안내 이미지 (멘토 공유용 PNG) ----------
+let shareCanvas = null;
+let shareProgram = null;
+
+const SHARE_FONT = (weight, size) =>
+  `${weight} ${size}px Pretendard, "Pretendard Variable", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
+
+function shareStatusStyle(status) {
+  if (status === "모집중") return { bg: "#FFF3D6", fg: "#8A6400" };
+  if (status === "확정") return { bg: "#E8F6E3", fg: "#3D6B04" };
+  if (status === "완료") return { bg: "#F3F4F6", fg: "#4B5563" };
+  return { bg: "#FCE8EA", fg: "#B0192C" }; // 취소
+}
+
+/** 한글은 띄어쓰기 단위가 아니라 글자 단위로 줄바꿈 */
+function shareWrapText(ctx, text, maxWidth) {
+  const out = [];
+  for (const para of String(text).split("\n")) {
+    let line = "";
+    for (const ch of para) {
+      if (line && ctx.measureText(line + ch).width > maxWidth) { out.push(line); line = ch; }
+      else line += ch;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function shareRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  if (ctx.roundRect) return ctx.roundRect(x, y, w, h, r);
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** 교육 1개 → 안내 이미지 캔버스 (넉넉한 캔버스에 그린 뒤 실제 높이로 잘라냄) */
+function buildScheduleCanvas(p) {
+  const W = 1000, PAD = 56, scale = 2, MAXH = 6000;
+  const color = progColor(p.id);
+
+  const big = document.createElement("canvas");
+  big.width = W * scale;
+  big.height = MAXH * scale;
+  const ctx = big.getContext("2d");
+  ctx.scale(scale, scale);
+  ctx.textBaseline = "top";
+
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, W, MAXH);
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, W, 10);
+
+  let y = 52;
+
+  // 상단 라벨 + 상태 배지
+  ctx.fillStyle = color;
+  ctx.font = SHARE_FONT(700, 17);
+  ctx.fillText("교육 일정 안내", PAD, y);
+  const st = shareStatusStyle(p.status);
+  const stW = ctx.measureText(p.status).width + 28;
+  shareRoundRect(ctx, W - PAD - stW, y - 8, stW, 34, 17);
+  ctx.fillStyle = st.bg;
+  ctx.fill();
+  ctx.fillStyle = st.fg;
+  ctx.fillText(p.status, W - PAD - stW + 14, y);
+  y += 38;
+
+  // 회사명 / 교육 제목
+  ctx.fillStyle = "#111827";
+  ctx.font = SHARE_FONT(800, 36);
+  ctx.fillText(p.client || p.title, PAD, y);
+  y += 52;
+  const subTitle = p.client && p.title && p.title !== p.client ? p.title : "";
+  if (subTitle) {
+    ctx.fillStyle = "#4B5563";
+    ctx.font = SHARE_FONT(500, 22);
+    ctx.fillText(subTitle, PAD, y);
+    y += 38;
+  }
+  y += 6;
+  ctx.strokeStyle = "#E5E7EB";
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
+  y += 26;
+
+  // 기본 정보 (장소·시간·담당) — 수락/확정자 우선, 없으면 제안 중인 사람이라도 표시
+  const names = (type) => {
+    const all = assignedFor(p.id, type);
+    const ok = all.filter((c) => c.status === "수락" || c.status === "확정");
+    return (ok.length ? ok : all).map((c) => c.name);
+  };
+  const mentorNames = names("mentor");
+  const facNames = names("facilitator");
+  const infoRows = [["장소", p.location || "미정"]];
+  if (!p.timeVaries)
+    infoRows.push(["시간", `${Util.hhmm(p.start_time)} ~ ${Util.hhmm(p.end_time)} (${Util.durationLabel(p.start_time, p.end_time)})`]);
+  infoRows.push(["멘토", mentorNames.length ? mentorNames.join(", ") : "배정 예정"]);
+  if (facNames.length || p.needed_facilitators)
+    infoRows.push(["퍼실리테이터", facNames.length ? facNames.join(", ") : "배정 예정"]);
+  if (p.memo) infoRows.push(["메모", p.memo]);
+
+  const labelW = 160;
+  for (const [label, value] of infoRows) {
+    ctx.font = SHARE_FONT(700, 18);
+    ctx.fillStyle = "#6B7280";
+    ctx.fillText(label, PAD, y + 2);
+    ctx.font = SHARE_FONT(500, 21);
+    ctx.fillStyle = "#1F2937";
+    for (const line of shareWrapText(ctx, value, W - PAD * 2 - labelW)) {
+      ctx.fillText(line, PAD + labelW, y);
+      y += 32;
+    }
+    y += 10;
+  }
+  y += 12;
+
+  // 회차 일정 표
+  ctx.fillStyle = "#111827";
+  ctx.font = SHARE_FONT(800, 22);
+  ctx.fillText("회차 일정", PAD, y);
+  ctx.fillStyle = color;
+  ctx.font = SHARE_FONT(700, 19);
+  ctx.fillText(`총 ${p.sessions.length}회`, PAD + 108, y + 3);
+  y += 44;
+
+  const rowH = 54;
+  p.sessions.forEach((s, i) => {
+    if (i % 2 === 0) {
+      ctx.fillStyle = "#F8F9FB";
+      shareRoundRect(ctx, PAD - 14, y, W - (PAD - 14) * 2, rowH, 10);
+      ctx.fill();
+    }
+    const ty = y + 16;
+    ctx.fillStyle = color;
+    ctx.font = SHARE_FONT(800, 18);
+    ctx.fillText(`${i + 1}회차`, PAD, ty);
+    ctx.fillStyle = "#111827";
+    ctx.font = SHARE_FONT(600, 21);
+    ctx.fillText(Util.fmtDate(s.date), PAD + 104, ty - 2);
+    ctx.fillStyle = "#374151";
+    ctx.font = SHARE_FONT(500, 21);
+    ctx.fillText(`${Util.hhmm(s.start_time)} ~ ${Util.hhmm(s.end_time)}`, PAD + 350, ty - 2);
+    ctx.fillStyle = "#9CA3AF";
+    ctx.font = SHARE_FONT(500, 18);
+    const dur = Util.durationLabel(s.start_time, s.end_time);
+    ctx.fillText(dur, W - PAD - ctx.measureText(dur).width, ty);
+    y += rowH;
+  });
+
+  // 푸터
+  y += 26;
+  ctx.strokeStyle = "#E5E7EB";
+  ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
+  y += 18;
+  const now = new Date();
+  const pad2 = (n) => String(n).padStart(2, "0");
+  ctx.fillStyle = "#9CA3AF";
+  ctx.font = SHARE_FONT(500, 15);
+  ctx.fillText(`멘토 일정 관리 · ${now.getFullYear()}.${pad2(now.getMonth() + 1)}.${pad2(now.getDate())} 기준`, PAD, y);
+  y += 46;
+
+  // 실제 사용한 높이만큼 잘라서 반환
+  const out = document.createElement("canvas");
+  out.width = W * scale;
+  out.height = Math.min(y, MAXH) * scale;
+  out.getContext("2d").drawImage(big, 0, 0);
+  return out;
+}
+
+function openShareImage(programId) {
+  const p = state.programById[programId];
+  if (!p) return;
+  shareProgram = p;
+  shareCanvas = buildScheduleCanvas(p);
+  const box = document.getElementById("shareImgPreview");
+  box.innerHTML = "";
+  const img = new Image();
+  img.src = shareCanvas.toDataURL("image/png");
+  img.style.cssText = "width:100%; display:block";
+  box.appendChild(img);
+  document.getElementById("shareImageModal").classList.remove("hidden");
+}
+function closeShareImage() {
+  document.getElementById("shareImageModal").classList.add("hidden");
+  shareCanvas = null;
+  shareProgram = null;
+}
+function downloadShareImage() {
+  if (!shareCanvas || !shareProgram) return;
+  const name = `${shareProgram.client || shareProgram.title}_일정안내.png`.replace(/[\\/:*?"<>|]/g, "_");
+  shareCanvas.toBlob((blob) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    Util.toast("PNG를 저장했어요.");
+  }, "image/png");
+}
+async function copyShareImage() {
+  if (!shareCanvas) return;
+  try {
+    const blob = await new Promise((res) => shareCanvas.toBlob(res, "image/png"));
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    Util.toast("이미지를 복사했어요. 카톡·슬랙에 붙여넣기(Ctrl+V) 하세요.");
+  } catch (err) {
+    Util.toast("이 브라우저에선 복사가 안 돼요 — PNG 다운로드를 이용하세요.");
+  }
 }
 
 // ---------- 멘토 스케줄 보기 (배정 교육 + 개인 일정) ----------
