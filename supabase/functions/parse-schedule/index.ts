@@ -1,14 +1,24 @@
 // ============================================================================
-// parse-schedule : 캡쳐 이미지/러프 텍스트 → 교육 일정 구조화 (Claude API)
+// parse-schedule : 캡쳐 이미지/러프 텍스트 → 교육 일정 구조화
+//  · AI 제공자 이중 지원: Ollama Cloud(무료 티어) 우선, Anthropic Claude 폴백.
 //  · 운영팀(admin)만 호출 가능. 결과는 프론트의 '새 교육' 폼에 채워져 검토 후 저장.
-//  시크릿: ANTHROPIC_API_KEY  (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 는 자동 주입)
-//  배포:   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-//          supabase functions deploy parse-schedule
+//
+//  시크릿 (둘 중 하나만 있어도 동작, 둘 다 있으면 Ollama 먼저 → 실패 시 Claude):
+//    OLLAMA_API_KEY     ollama.com/settings/keys 에서 발급 (무료)
+//    OLLAMA_MODEL       선택, 기본 "qwen3-vl:235b" (비전 지원 모델이어야 함)
+//    ANTHROPIC_API_KEY  platform.claude.com 에서 발급 (유료, 더 정확)
+//  (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 는 자동 주입)
+//
+//  배포:
+//    supabase secrets set OLLAMA_API_KEY=...
+//    supabase functions deploy parse-schedule
 // ============================================================================
 import Anthropic from "npm:@anthropic-ai/sdk";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const OLLAMA_API_KEY = Deno.env.get("OLLAMA_API_KEY") ?? "";
+const OLLAMA_MODEL = Deno.env.get("OLLAMA_MODEL") || "qwen3-vl:235b";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
 const CORS = {
@@ -37,7 +47,7 @@ async function isAdmin(req: Request): Promise<boolean> {
   return rows[0]?.role === "admin";
 }
 
-// 추출 결과 스키마 (structured outputs — 항상 이 형태의 유효한 JSON이 보장됨)
+// 추출 결과 스키마 — Ollama의 format 파라미터/Claude structured outputs 양쪽에 사용
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -80,44 +90,97 @@ function buildPrompt(text: string): string {
     "- 시간은 24시간 HH:MM. '오후 2시'는 14:00. 시간 정보가 전혀 없으면 10:00~13:00 사용.",
     "- 회사명(client)과 교육 제목(title)을 구분. 하나만 있으면 title에 넣고 client는 빈 문자열.",
     "- 표/캘린더 이미지라면 칸 안의 모든 회차를 빠짐없이 추출.",
+    "- 결과는 JSON만 출력.",
     text ? `\n텍스트:\n${text}` : "",
   ].join("\n");
+}
+
+type Img = { data: string; media_type?: string } | null;
+
+/** Ollama Cloud (무료) — 네이티브 /api/chat + format(JSON 스키마) + images(base64) */
+async function parseWithOllama(text: string, image: Img) {
+  const message: Record<string, unknown> = { role: "user", content: buildPrompt(text) };
+  if (image?.data) message.images = [image.data];
+  const r = await fetch("https://ollama.com/api/chat", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OLLAMA_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      messages: [message],
+      stream: false,
+      format: SCHEMA,
+      options: { temperature: 0 },
+    }),
+  });
+  if (!r.ok) {
+    const body = await r.text();
+    throw new Error(`Ollama ${r.status}: ${body.slice(0, 300)}`);
+  }
+  const data = await r.json();
+  const content = data?.message?.content;
+  if (!content) throw new Error("Ollama 응답이 비어 있음");
+  return JSON.parse(content);
+}
+
+/** Anthropic Claude (유료, 더 정확) — 비전 + structured outputs */
+async function parseWithClaude(text: string, image: Img) {
+  const content: Anthropic.ContentBlockParam[] = [];
+  if (image?.data) {
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: image.media_type || "image/png",
+        data: image.data,
+      },
+    });
+  }
+  content.push({ type: "text", text: buildPrompt(text) });
+
+  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const msg = await client.messages.create({
+    model: "claude-opus-4-8",
+    max_tokens: 16000,
+    thinking: { type: "adaptive" },
+    output_config: { format: { type: "json_schema", schema: SCHEMA } },
+    messages: [{ role: "user", content }],
+  });
+  const textBlock = msg.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") throw new Error("Claude 응답이 비어 있음");
+  return JSON.parse(textBlock.text);
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
-    if (!ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY 미설정 — SETUP.md 참고" }, 500);
+    if (!OLLAMA_API_KEY && !ANTHROPIC_API_KEY) {
+      return json({ error: "OLLAMA_API_KEY 또는 ANTHROPIC_API_KEY를 설정하세요 — SETUP.md 7번 참고" }, 500);
+    }
     if (!(await isAdmin(req))) return json({ error: "운영팀만 사용할 수 있어요." }, 403);
 
     const { text = "", image = null } = await req.json();
     if (!text && !image?.data) return json({ error: "텍스트 또는 이미지를 보내주세요." }, 400);
 
-    const content: Anthropic.ContentBlockParam[] = [];
-    if (image?.data) {
-      content.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: image.media_type || "image/png",
-          data: image.data,
-        },
-      });
+    // Ollama(무료) 먼저, 실패하면 Claude로 폴백
+    const errors: string[] = [];
+    if (OLLAMA_API_KEY) {
+      try {
+        return json({ result: await parseWithOllama(text, image), provider: "ollama" });
+      } catch (e) {
+        errors.push(String(e?.message ?? e));
+      }
     }
-    content.push({ type: "text", text: buildPrompt(text) });
-
-    const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    const msg = await client.messages.create({
-      model: "claude-opus-4-8",
-      max_tokens: 16000,
-      thinking: { type: "adaptive" },
-      output_config: { format: { type: "json_schema", schema: SCHEMA } },
-      messages: [{ role: "user", content }],
-    });
-
-    const textBlock = msg.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") return json({ error: "추출 결과가 비어 있어요." }, 500);
-    return json({ result: JSON.parse(textBlock.text) });
+    if (ANTHROPIC_API_KEY) {
+      try {
+        return json({ result: await parseWithClaude(text, image), provider: "claude" });
+      } catch (e) {
+        errors.push(String(e?.message ?? e));
+      }
+    }
+    return json({ error: "분석 실패: " + errors.join(" / ") }, 500);
   } catch (e) {
     return json({ error: String(e?.message ?? e) }, 500);
   }

@@ -103,17 +103,45 @@ where email = 'seungcheol.hong@likelion.net';
 ## 7. (선택) 스마트 추가 — 캡쳐/텍스트로 교육 자동 입력
 
 관리자 페이지의 **✨ 스마트 추가** 버튼은 공문·카톡 텍스트나 일정표 캡쳐 이미지를
-Claude API로 분석해 '새 교육' 폼을 자동으로 채워줍니다.
+AI로 분석해 '새 교육' 폼을 자동으로 채워줍니다.
 
 - **텍스트만**: AI 미설정이어도 간단한 규칙 기반 분석으로 동작합니다 (날짜·시간 확인 필요).
-- **캡쳐 이미지**: 아래처럼 엣지 함수 배포 + Anthropic API 키 설정이 필요합니다.
+- **캡쳐 이미지**: 아래처럼 엣지 함수 배포 + AI 키 설정이 필요합니다.
+
+AI 제공자는 둘 중 아무거나 (둘 다 넣으면 Ollama 먼저 시도, 실패 시 Claude):
+
+| 제공자 | 비용 | 시크릿 |
+|---|---|---|
+| **Ollama Cloud** (권장 시작점) | 무료 티어 (5시간/주간 한도) | `OLLAMA_API_KEY` |
+| Anthropic Claude | 유료 (캡쳐 1장 ≈ 수십 원, 더 정확) | `ANTHROPIC_API_KEY` |
+
+### Ollama Cloud로 설정 (무료)
 
 ```bash
-# 1) https://platform.claude.com 에서 API 키 발급 (sk-ant-...)
-# 2) Supabase 프로젝트에 시크릿 등록
-supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+# 1) https://ollama.com 가입 → https://ollama.com/settings/keys 에서 API 키 생성
 
-# 3) 함수 배포 (저장소 루트에서)
+# 2) Supabase CLI 로그인 + 프로젝트 연결 (처음 한 번만)
+supabase login
+supabase link --project-ref <프로젝트REF>
+
+# 3) 시크릿 등록
+supabase secrets set OLLAMA_API_KEY=발급받은키
+
+# 4) 함수 배포 (저장소 루트에서)
+supabase functions deploy parse-schedule
+```
+
+- 기본 모델은 비전 지원 `qwen3-vl:235b` 입니다. 바꾸려면:
+  `supabase secrets set OLLAMA_MODEL=모델명` (이미지 분석을 쓰려면 비전 모델이어야 함.
+  모델 목록: <https://ollama.com/search?c=cloud>)
+- 무료 티어 한도(5시간 세션·주간 GPU 시간)를 넘으면 분석이 실패할 수 있어요 —
+  잠시 후 재시도하거나 Claude 키를 폴백으로 추가하세요.
+
+### Anthropic Claude로 설정 (선택)
+
+```bash
+# https://platform.claude.com 에서 키 발급 (sk-ant-...)
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 supabase functions deploy parse-schedule
 ```
 
