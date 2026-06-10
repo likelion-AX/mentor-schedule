@@ -100,6 +100,28 @@ where email = 'seungcheol.hong@likelion.net';
 
 ---
 
+## 7. (선택) 스마트 추가 — 캡쳐/텍스트로 교육 자동 입력
+
+관리자 페이지의 **✨ 스마트 추가** 버튼은 공문·카톡 텍스트나 일정표 캡쳐 이미지를
+Claude API로 분석해 '새 교육' 폼을 자동으로 채워줍니다.
+
+- **텍스트만**: AI 미설정이어도 간단한 규칙 기반 분석으로 동작합니다 (날짜·시간 확인 필요).
+- **캡쳐 이미지**: 아래처럼 엣지 함수 배포 + Anthropic API 키 설정이 필요합니다.
+
+```bash
+# 1) https://platform.claude.com 에서 API 키 발급 (sk-ant-...)
+# 2) Supabase 프로젝트에 시크릿 등록
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+
+# 3) 함수 배포 (저장소 루트에서)
+supabase functions deploy parse-schedule
+```
+
+함수는 호출자의 로그인 토큰으로 **운영팀(admin) 여부를 확인**한 뒤에만 동작하며,
+분석 결과는 바로 저장되지 않고 '새 교육' 폼에 채워져 사람이 확인 후 저장합니다.
+
+---
+
 ## 사용 흐름
 
 **멘토** (`mentor.html`)

@@ -35,6 +35,7 @@
         <input class="input" id="imgSearch" list="programNames" placeholder="🖼 교육명 입력 → 일정 이미지" style="width: 250px" />
         <datalist id="programNames"></datalist>
         <button class="btn btn-secondary" id="imgSearchBtn">호출</button>
+        <button class="btn btn-secondary" id="smartAddBtn">✨ 스마트 추가</button>
         <button class="btn btn-primary" id="newSessionBtn">+ 새 교육</button>
       </div>
     </div>
@@ -236,6 +237,34 @@
           <button type="submit" class="btn btn-primary" id="inviteSubmitBtn">초대 추가</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- 스마트 추가 모달 (캡쳐/러프 텍스트 → 교육 자동 채우기) -->
+  <div class="modal-backdrop hidden" id="smartModal">
+    <div class="modal modal-lg">
+      <div class="modal-title">✨ 스마트 추가</div>
+      <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+        공문·카톡·메일 내용을 붙여넣거나, 일정표 <b>캡쳐 이미지를 Ctrl+V로 붙여넣기</b>/첨부하세요.
+        분석 결과는 ‘새 교육’ 폼에 채워지고, <b>확인 후 저장</b>하면 됩니다.
+      </p>
+      <div class="field">
+        <textarea class="textarea" id="smartText" rows="7"
+          placeholder="예) 삼성전자 AI 기초교육&#10;6/15부터 매주 월 10시~13시, 총 4회&#10;장소: 수원 디지털시티 / 멘토 2명, 퍼실 1명&#10;&#10;(이미지는 여기에 Ctrl+V로 붙여넣어도 돼요)"></textarea>
+      </div>
+      <div class="field">
+        <input type="file" id="smartFile" accept="image/*" style="display:none" />
+        <div class="row" style="gap: var(--space-2); align-items:center">
+          <button type="button" class="btn btn-secondary btn-sm" id="smartAttachBtn">🖼 이미지 첨부</button>
+          <span class="text-caption text-muted" id="smartImgInfo">첨부된 이미지 없음</span>
+          <button type="button" class="btn btn-ghost btn-sm hidden" id="smartImgClearBtn">✕ 이미지 제거</button>
+        </div>
+        <div id="smartImgPreview" style="margin-top: var(--space-2); max-height: 180px; overflow:auto"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="smartCancelBtn">취소</button>
+        <button type="button" class="btn btn-primary" id="smartAnalyzeBtn">✨ 분석해서 채우기</button>
+      </div>
     </div>
   </div>
 

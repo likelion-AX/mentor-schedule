@@ -49,6 +49,8 @@ async function init() {
   document.querySelectorAll("#weekdays .wd-btn").forEach((b) =>
     b.addEventListener("click", () => { b.classList.toggle("active"); updateRepeatPreview(); }));
 
+  initSmartAdd();
+
   const imgSearch = document.getElementById("imgSearch");
   document.getElementById("imgSearchBtn").addEventListener("click", () => callScheduleImage(imgSearch.value.trim()));
   imgSearch.addEventListener("keydown", (e) => {
@@ -772,6 +774,162 @@ async function deleteInvite(email) {
   if (error) return Util.toast("삭제 실패: " + error.message);
   Util.toast("초대를 삭제했습니다.");
   loadAll();
+}
+
+// ---------- 스마트 추가 (캡쳐/러프 텍스트 → 새 교육 폼 자동 채우기) ----------
+let smartImage = null; // { data: base64(헤더 제외), media_type }
+
+function initSmartAdd() {
+  document.getElementById("smartAddBtn").addEventListener("click", openSmartModal);
+  document.getElementById("smartCancelBtn").addEventListener("click", closeSmartModal);
+  document.getElementById("smartModal").addEventListener("click", (e) => {
+    if (e.target.id === "smartModal") closeSmartModal();
+  });
+  document.getElementById("smartAttachBtn").addEventListener("click", () =>
+    document.getElementById("smartFile").click());
+  document.getElementById("smartFile").addEventListener("change", (e) => {
+    if (e.target.files[0]) setSmartImage(e.target.files[0]);
+    e.target.value = "";
+  });
+  document.getElementById("smartImgClearBtn").addEventListener("click", clearSmartImage);
+  document.getElementById("smartText").addEventListener("paste", (e) => {
+    const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
+    if (item) { e.preventDefault(); setSmartImage(item.getAsFile()); }
+  });
+  document.getElementById("smartAnalyzeBtn").addEventListener("click", smartAnalyze);
+}
+
+function openSmartModal() {
+  document.getElementById("smartText").value = "";
+  clearSmartImage();
+  document.getElementById("smartModal").classList.remove("hidden");
+  document.getElementById("smartText").focus();
+}
+function closeSmartModal() {
+  document.getElementById("smartModal").classList.add("hidden");
+}
+function clearSmartImage() {
+  smartImage = null;
+  document.getElementById("smartImgInfo").textContent = "첨부된 이미지 없음";
+  document.getElementById("smartImgPreview").innerHTML = "";
+  document.getElementById("smartImgClearBtn").classList.add("hidden");
+}
+
+/** 캡쳐 이미지를 최대 2000px로 줄여 base64로 보관 (업로드 용량·비용 절약) */
+function setSmartImage(file) {
+  const img = new Image();
+  img.onload = () => {
+    const MAX = 2000;
+    const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/png");
+    smartImage = { data: dataUrl.split(",")[1], media_type: "image/png" };
+    document.getElementById("smartImgInfo").textContent = `이미지 1장 (${canvas.width}×${canvas.height})`;
+    document.getElementById("smartImgClearBtn").classList.remove("hidden");
+    const preview = new Image();
+    preview.src = dataUrl;
+    preview.style.cssText = "max-width:100%; border:1px solid var(--color-border-weak); border-radius:8px";
+    const box = document.getElementById("smartImgPreview");
+    box.innerHTML = "";
+    box.appendChild(preview);
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+async function smartAnalyze() {
+  const text = document.getElementById("smartText").value.trim();
+  if (!text && !smartImage) return Util.toast("텍스트를 붙여넣거나 이미지를 첨부하세요.");
+  const btn = document.getElementById("smartAnalyzeBtn");
+  btn.disabled = true;
+  btn.textContent = "분석 중… (수 초 걸려요)";
+  try {
+    const { data, error } = await window.sb.functions.invoke("parse-schedule", {
+      body: { text, image: smartImage },
+    });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    applyParsedSchedule(data.result);
+  } catch (err) {
+    // AI 함수 미배포/오류 시: 텍스트만이라도 규칙 기반으로 파싱
+    const local = text ? localParseSchedule(text) : null;
+    if (local && local.sessions.length) {
+      applyParsedSchedule(local);
+      Util.toast("AI 미설정이라 간단 분석으로 채웠어요 — 날짜·시간을 꼭 확인하세요.");
+    } else {
+      Util.toast("분석 실패: " + (smartImage ? "이미지 분석은 AI 함수 배포가 필요해요 (SETUP.md 참고)" : err.message));
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✨ 분석해서 채우기";
+  }
+}
+
+/** 분석 결과를 '새 교육' 폼에 채움 — 저장은 사람이 확인 후 */
+function applyParsedSchedule(p) {
+  closeSmartModal();
+  openModal();
+  document.getElementById("sClient").value = p.client || "";
+  document.getElementById("sTitle").value = p.title || "";
+  document.getElementById("sLocation").value = p.location || "";
+  document.getElementById("sMemo").value = p.memo || "";
+  document.getElementById("sNeeded").value = p.needed_mentors || 1;
+  document.getElementById("sNeededFac").value = p.needed_facilitators || 0;
+  document.getElementById("sessionRows").innerHTML = "";
+  const sessions = p.sessions || [];
+  sessions.forEach((s) => addSessionRow(s.date, s.start, s.end));
+  if (!sessions.length) addSessionRow();
+  Util.toast(`분석 완료 — ${sessions.length}개 회차를 채웠어요. 확인 후 저장하세요.`);
+}
+
+/** AI 없이 동작하는 간단 규칙 파서 (텍스트 전용 폴백) */
+function localParseSchedule(text) {
+  const out = { client: "", title: "", location: "", memo: "", needed_mentors: 1, needed_facilitators: 0, sessions: [] };
+  const pad = (n) => String(n).padStart(2, "0");
+  const today = new Date();
+
+  // 시간: 10:00~13:00 / 10시~13시 / 10시-13시 / 오후 2시~5시
+  let start = "10:00", end = "13:00";
+  const tm = text.match(/(오전|오후)?\s*(\d{1,2})(?::(\d{2})|시)\s*(?:반)?\s*[~\-–부터]+\s*(오전|오후)?\s*(\d{1,2})(?::(\d{2})|시)/);
+  if (tm) {
+    let sh = parseInt(tm[2], 10), eh = parseInt(tm[5], 10);
+    if (tm[1] === "오후" && sh < 12) sh += 12;
+    if (tm[4] === "오후" && eh < 12) eh += 12;
+    if (!tm[4] && eh < sh) eh += 12; // "10시~1시", "오후 2시~5시" → 종료를 시작 이후로 추정
+    start = `${pad(sh)}:${tm[3] || "00"}`;
+    end = `${pad(eh)}:${tm[6] || "00"}`;
+  }
+
+  // 날짜: 2026-06-15 / 6/15 / 6월 15일 — 모두 수집
+  const dates = new Set();
+  const re = /(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})|(\d{1,2})\s*[\/월]\s*(\d{1,2})\s*일?/g;
+  let m;
+  while ((m = re.exec(text))) {
+    let y, mo, d;
+    if (m[1]) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else {
+      mo = +m[4]; d = +m[5];
+      if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+      y = today.getFullYear();
+      // 이미 지난 날짜면 내년으로 추정
+      if (new Date(`${y}-${pad(mo)}-${pad(d)}`) < new Date(today.getTime() - 86400000 * 30)) y += 1;
+    }
+    dates.add(`${y}-${pad(mo)}-${pad(d)}`);
+  }
+  out.sessions = [...dates].sort().map((date) => ({ date, start, end }));
+
+  const loc = text.match(/장소\s*[:：]\s*([^\n,/]+)/);
+  if (loc) out.location = loc[1].trim();
+  const nm = text.match(/멘토\s*(\d+)\s*명/);
+  if (nm) out.needed_mentors = +nm[1];
+  const nf = text.match(/퍼실(?:리테이터)?\s*(\d+)\s*명/);
+  if (nf) out.needed_facilitators = +nf[1];
+
+  const firstLine = text.split("\n").map((l) => l.trim()).find((l) => l);
+  if (firstLine) out.title = firstLine.slice(0, 50);
+  return out;
 }
 
 // ---------- 교육명으로 일정 이미지 호출 ----------
