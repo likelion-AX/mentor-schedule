@@ -128,7 +128,59 @@ async function parseWithOllama(text: string, image: Img) {
   const content = data?.message?.content;
   console.log("[ollama]", OLLAMA_MODEL, "raw:", String(content).slice(0, 500));
   if (!content) throw new Error("Ollama 응답이 비어 있음");
-  return JSON.parse(content);
+  return normalizeResult(extractJson(content));
+}
+
+/** 모델이 코드펜스(```json)나 잡담을 섞어도 JSON 본문만 뽑아 파싱 */
+function extractJson(raw: string): unknown {
+  let s = String(raw).trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/, "")
+    .trim();
+  try { return JSON.parse(s); } catch (_) { /* 아래에서 블록 추출 시도 */ }
+  const m = s.match(/[\[{][\s\S]*[\]}]/);
+  if (m) return JSON.parse(m[0]);
+  throw new Error("JSON 파싱 실패: " + s.slice(0, 120));
+}
+
+/** 모델별 형식 편차(배열 반환, start_time 키, 2026. 7. 7. 날짜 등)를 표준 형태로 정규화 */
+function normalizeResult(parsed: unknown) {
+  // deno-lint-ignore no-explicit-any
+  let obj: any = parsed;
+  if (Array.isArray(parsed)) {
+    const first = parsed[0];
+    obj = first && typeof first === "object" && !("date" in first) && !("일자" in first)
+      ? first
+      : { sessions: parsed };
+  }
+  const pad = (n: string | number) => String(n).padStart(2, "0");
+  const fixDate = (d: unknown) => {
+    const m = String(d ?? "").match(/(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/);
+    return m ? `${m[1]}-${pad(m[2])}-${pad(m[3])}` : "";
+  };
+  const fixTime = (t: unknown, fallback: string) => {
+    const m = String(t ?? "").match(/(\d{1,2}):(\d{2})/);
+    return m ? `${pad(m[1])}:${m[2]}` : fallback;
+  };
+  // deno-lint-ignore no-explicit-any
+  const sessions = (Array.isArray(obj?.sessions) ? obj.sessions : []).map((s: any) => {
+    // "09:30 ~ 12:30"처럼 한 칸에 묶인 시간도 분리
+    const times = String(s?.time ?? s?.["시간"] ?? "").match(/\d{1,2}:\d{2}/g) ?? [];
+    return {
+      date: fixDate(s?.date ?? s?.["일자"]),
+      start: fixTime(s?.start ?? s?.start_time ?? times[0], "10:00"),
+      end: fixTime(s?.end ?? s?.end_time ?? times[1], "13:00"),
+    };
+  }).filter((s: { date: string }) => s.date);
+  return {
+    client: String(obj?.client ?? ""),
+    title: String(obj?.title ?? ""),
+    location: String(obj?.location ?? ""),
+    memo: String(obj?.memo ?? ""),
+    needed_mentors: Number(obj?.needed_mentors) || 1,
+    needed_facilitators: Number(obj?.needed_facilitators) || 0,
+    sessions,
+  };
 }
 
 /** 모델이 형식만 맞고 알맹이 없는 결과를 주면 실패로 처리 (빈 폼 방지) */
@@ -165,7 +217,7 @@ async function parseWithClaude(text: string, image: Img) {
   });
   const textBlock = msg.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") throw new Error("Claude 응답이 비어 있음");
-  return JSON.parse(textBlock.text);
+  return normalizeResult(extractJson(textBlock.text));
 }
 
 Deno.serve(async (req) => {
