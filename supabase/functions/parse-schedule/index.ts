@@ -90,6 +90,7 @@ function buildPrompt(text: string): string {
     "- '6/15부터 매주 월·수 10~13시 총 4회' 같은 반복 표현은 개별 회차 날짜로 모두 전개.",
     "- 시간은 24시간 HH:MM. '오후 2시'는 14:00. 시간 정보가 전혀 없으면 10:00~13:00 사용.",
     "- 회사명(client)과 교육 제목(title)을 구분. 하나만 있으면 title에 넣고 client는 빈 문자열.",
+    "- 인원수를 놓치지 말 것: '멘토 2명' → needed_mentors=2, '퍼실 1명' → needed_facilitators=1.",
     "- 표/캘린더 이미지라면 칸 안의 모든 회차를 빠짐없이 추출.",
     "- 결과는 JSON만 출력.",
     text ? `\n텍스트:\n${text}` : "",
