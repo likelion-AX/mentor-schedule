@@ -850,7 +850,16 @@ async function smartAnalyze() {
     const { data, error } = await window.sb.functions.invoke("parse-schedule", {
       body: { text, image: smartImage },
     });
-    if (error || data?.error) throw new Error(data?.error || error.message);
+    if (error) {
+      // 함수가 보낸 구체적 오류 메시지를 응답 본문에서 꺼냄
+      let detail = error.message;
+      try {
+        const body = await error.context?.json();
+        if (body?.error) detail = body.error;
+      } catch (_) { /* 본문 없으면 기본 메시지 사용 */ }
+      throw new Error(detail);
+    }
+    if (data?.error) throw new Error(data.error);
     applyParsedSchedule(data.result, data.provider === "ollama" ? "Ollama" : "Claude");
   } catch (err) {
     console.error("[스마트 추가] 분석 실패:", err);
@@ -860,7 +869,7 @@ async function smartAnalyze() {
       applyParsedSchedule(local);
       Util.toast("AI 미설정이라 간단 분석으로 채웠어요 — 날짜·시간을 꼭 확인하세요.");
     } else {
-      Util.toast("분석 실패: " + (smartImage ? "이미지 분석은 AI 함수 배포가 필요해요 (SETUP.md 참고)" : err.message));
+      Util.toast("분석 실패: " + (err.message || "알 수 없는 오류"));
     }
   } finally {
     btn.disabled = false;
