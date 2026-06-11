@@ -18,8 +18,9 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const OLLAMA_API_KEY = Deno.env.get("OLLAMA_API_KEY") ?? "";
-// instruct(비추론) 변형 — 추론(thinking) 변형은 응답이 느리고 구조화 출력이 비는 경우가 있음
-const OLLAMA_MODEL = Deno.env.get("OLLAMA_MODEL") || "qwen3-vl:235b-instruct";
+// gemma4:31b — 비전 지원 + 무료 한도 소모 최소. 일정표 추출 전 항목 검증 완료 (2026-06).
+// 직접 API 호출이므로 "-cloud" 접미사 없이. 추론(thinking) 변형 모델은 구조화 출력이 비는 경우가 있어 피할 것.
+const OLLAMA_MODEL = Deno.env.get("OLLAMA_MODEL") || "gemma4:31b";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
 const CORS = {

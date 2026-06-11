@@ -131,9 +131,10 @@ supabase secrets set OLLAMA_API_KEY=발급받은키
 supabase functions deploy parse-schedule
 ```
 
-- 기본 모델은 비전 지원 `qwen3-vl:235b` 입니다. 바꾸려면:
-  `supabase secrets set OLLAMA_MODEL=모델명` (이미지 분석을 쓰려면 비전 모델이어야 함.
-  모델 목록: <https://ollama.com/search?c=cloud>)
+- 기본 모델은 비전 지원 `gemma4:31b` 입니다 (무료 한도 소모 최소, 일정표 추출 검증 완료). 바꾸려면:
+  `supabase secrets set OLLAMA_MODEL=모델명` — 이미지 분석을 쓰려면 비전 모델이어야 하고,
+  직접 API 호출이라 모델명에 `-cloud` 접미사를 붙이면 안 됩니다.
+  (모델 목록: <https://ollama.com/search?c=cloud>)
 - 무료 티어 한도(5시간 세션·주간 GPU 시간)를 넘으면 분석이 실패할 수 있어요 —
   잠시 후 재시도하거나 Claude 키를 폴백으로 추가하세요.
 
