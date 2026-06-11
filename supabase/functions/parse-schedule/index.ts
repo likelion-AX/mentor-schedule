@@ -95,7 +95,10 @@ function buildPrompt(text: string): string {
     "- 인원수를 놓치지 말 것: '멘토 2명' → needed_mentors=2, '퍼실 1명' → needed_facilitators=1.",
     "- 표/캘린더 이미지라면 칸 안의 모든 회차를 빠짐없이 추출.",
     "- 비고·유의사항(준비물, 식사, 주차, 담당자 등)은 memo에 그대로 요약.",
-    "- 결과는 JSON만 출력.",
+    "",
+    "출력은 반드시 아래 형태의 JSON 객체 '하나'로만 하세요 (코드펜스·설명 문장 금지):",
+    '{"client":"회사명","title":"교육 제목","location":"장소","memo":"유의사항","needed_mentors":1,"needed_facilitators":0,"sessions":[{"date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM"}]}',
+    "sessions 배열만 출력하면 안 됩니다 — 제목·장소·인원 등 문서의 다른 정보도 위 객체 필드에 반드시 담으세요.",
     text ? `\n텍스트:\n${text}` : "",
   ].join("\n");
 }
