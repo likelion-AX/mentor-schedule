@@ -851,8 +851,9 @@ async function smartAnalyze() {
       body: { text, image: smartImage },
     });
     if (error || data?.error) throw new Error(data?.error || error.message);
-    applyParsedSchedule(data.result);
+    applyParsedSchedule(data.result, data.provider === "ollama" ? "Ollama" : "Claude");
   } catch (err) {
+    console.error("[스마트 추가] 분석 실패:", err);
     // AI 함수 미배포/오류 시: 텍스트만이라도 규칙 기반으로 파싱
     const local = text ? localParseSchedule(text) : null;
     if (local && local.sessions.length) {
@@ -868,7 +869,7 @@ async function smartAnalyze() {
 }
 
 /** 분석 결과를 '새 교육' 폼에 채움 — 저장은 사람이 확인 후 */
-function applyParsedSchedule(p) {
+function applyParsedSchedule(p, providerLabel) {
   closeSmartModal();
   openModal();
   document.getElementById("sClient").value = p.client || "";
@@ -881,7 +882,7 @@ function applyParsedSchedule(p) {
   const sessions = p.sessions || [];
   sessions.forEach((s) => addSessionRow(s.date, s.start, s.end));
   if (!sessions.length) addSessionRow();
-  Util.toast(`분석 완료 — ${sessions.length}개 회차를 채웠어요. 확인 후 저장하세요.`);
+  Util.toast(`분석 완료${providerLabel ? ` (${providerLabel})` : ""} — ${sessions.length}개 회차를 채웠어요. 확인 후 저장하세요.`);
 }
 
 /** AI 없이 동작하는 간단 규칙 파서 (텍스트 전용 폴백) */

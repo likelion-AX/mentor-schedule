@@ -18,7 +18,8 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const OLLAMA_API_KEY = Deno.env.get("OLLAMA_API_KEY") ?? "";
-const OLLAMA_MODEL = Deno.env.get("OLLAMA_MODEL") || "qwen3-vl:235b";
+// instruct(비추론) 변형 — 추론(thinking) 변형은 응답이 느리고 구조화 출력이 비는 경우가 있음
+const OLLAMA_MODEL = Deno.env.get("OLLAMA_MODEL") || "qwen3-vl:235b-instruct";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
 const CORS = {
@@ -121,8 +122,18 @@ async function parseWithOllama(text: string, image: Img) {
   }
   const data = await r.json();
   const content = data?.message?.content;
+  console.log("[ollama]", OLLAMA_MODEL, "raw:", String(content).slice(0, 500));
   if (!content) throw new Error("Ollama 응답이 비어 있음");
   return JSON.parse(content);
+}
+
+/** 모델이 형식만 맞고 알맹이 없는 결과를 주면 실패로 처리 (빈 폼 방지) */
+function assertNotEmpty(result: Record<string, unknown>) {
+  const sessions = Array.isArray(result?.sessions) ? result.sessions : [];
+  if (!sessions.length && !result?.title && !result?.client) {
+    throw new Error("추출된 내용이 없음 (모델이 빈 결과 반환)");
+  }
+  return result;
 }
 
 /** Anthropic Claude (유료, 더 정확) — 비전 + structured outputs */
@@ -168,16 +179,18 @@ Deno.serve(async (req) => {
     const errors: string[] = [];
     if (OLLAMA_API_KEY) {
       try {
-        return json({ result: await parseWithOllama(text, image), provider: "ollama" });
+        return json({ result: assertNotEmpty(await parseWithOllama(text, image)), provider: "ollama", model: OLLAMA_MODEL });
       } catch (e) {
-        errors.push(String(e?.message ?? e));
+        console.error("[ollama] 실패:", e);
+        errors.push("ollama: " + String(e?.message ?? e));
       }
     }
     if (ANTHROPIC_API_KEY) {
       try {
-        return json({ result: await parseWithClaude(text, image), provider: "claude" });
+        return json({ result: assertNotEmpty(await parseWithClaude(text, image)), provider: "claude" });
       } catch (e) {
-        errors.push(String(e?.message ?? e));
+        console.error("[claude] 실패:", e);
+        errors.push("claude: " + String(e?.message ?? e));
       }
     }
     return json({ error: "분석 실패: " + errors.join(" / ") }, 500);
