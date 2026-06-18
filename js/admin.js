@@ -436,14 +436,36 @@ function sessionRunRow(s) {
 async function setSessionDone(sessionId, done) {
   const { error } = await window.sb.from("education_sessions").update({ done }).eq("id", sessionId);
   // 컬럼이 없으면(마이그레이션 전) 화면만 토글하는 미리보기로 동작. 그 외 오류는 진짜 실패.
-  if (error && !isMissingColumn(error)) { Util.toast("저장 실패: " + error.message); return loadAll(); }
+  const preview = error && isMissingColumn(error);
+  if (error && !preview) { Util.toast("저장 실패: " + error.message); return loadAll(); }
   const s = state.sessions.find((x) => x.id === sessionId);
   if (s) s.done = done;
-  Util.toast(error ? "👀 미리보기 — DB 컬럼 추가 전이라 저장은 안 됩니다" : (done ? "수행 완료로 표시했습니다." : "완료 표시를 해제했습니다."));
+  // 회차가 전부 완료면 교육 상태를 자동으로 '완료'로, 다시 풀리면 '확정'으로 되돌림.
+  await autoStatusByDone(s?.program_id, preview);
+  Util.toast(preview ? "👀 미리보기 — DB 컬럼 추가 전이라 저장은 안 됩니다" : (done ? "수행 완료로 표시했습니다." : "완료 표시를 해제했습니다."));
   buildPrograms();
   renderCalendar();
   renderProgramList();
   renderBoard();
+}
+
+// 전 회차 done → 교육 상태 '완료'. 하나라도 풀리고 상태가 '완료'였으면 '확정'으로 복귀.
+// preview(컬럼 미존재)면 done이 저장 안 되므로 상태도 화면에만 반영(불일치 방지).
+async function autoStatusByDone(programId, preview) {
+  if (!programId) return;
+  const rows = state.sessions.filter((s) => s.program_id === programId);
+  if (!rows.length) return;
+  const allDone = rows.every((s) => s.done);
+  const cur = rows[0].status;
+  let next = null;
+  if (allDone && cur !== "완료" && cur !== "취소") next = "완료";
+  else if (!allDone && cur === "완료") next = "확정";
+  if (!next) return;
+  rows.forEach((s) => { s.status = next; }); // 로컬 반영
+  if (!preview) {
+    const { error } = await window.sb.from("education_sessions").update({ status: next }).eq("program_id", programId);
+    if (error) Util.toast("상태 변경 실패: " + error.message);
+  }
 }
 
 async function setSessionNote(sessionId, note) {
