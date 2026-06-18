@@ -217,6 +217,7 @@ a:hover { text-decoration: underline; }
   border-radius: var(--radius-small);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
 }
 .badge-session  { background: var(--cal-session-bg);  color: var(--cal-session-fg); }
 .badge-block    { background: var(--cal-block-bg);    color: var(--cal-block-fg); }
@@ -252,6 +253,12 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.02em;
 }
 .table tr:hover td { background: var(--color-bg-normal-hovered); }
+
+/* 배정 보드 표(폭 400px)는 좁아서 헤더가 세로로 깨지기 쉬움 → 헤더 한 줄 고정,
+   칸 패딩 축소, 긴 이메일은 줄바꿈해 다른 칸을 밀지 않게. */
+#board .table th { white-space: nowrap; }
+#board .table th, #board .table td { padding: var(--space-2); }
+#board .table td:first-child .text-caption { word-break: break-all; }
 
 /* ---------- Grid ---------- */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
@@ -307,17 +314,7 @@ a:hover { text-decoration: underline; }
   padding: var(--space-6);
 }
 .modal-title { font-size: var(--font-size-heading); font-weight: var(--font-weight-bold); margin-bottom: var(--space-4); }
-.modal-actions {
-  display: flex; justify-content: flex-end; gap: var(--space-2);
-  position: sticky; bottom: calc(-1 * var(--space-6));
-  margin: var(--space-6) calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
-  padding: var(--space-4) var(--space-6);
-  background: var(--color-bg-surface);
-  border-top: 1px solid var(--color-border-weak);
-  border-radius: 0 0 var(--radius-large) var(--radius-large);
-}
-/* 회차 빌더가 길어져도 모달이 화면을 넘지 않게 내부 스크롤 */
-#sessionRows { max-height: 38vh; overflow-y: auto; padding-right: 4px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-6); }
 
 /* ---------- Utility ---------- */
 .row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
@@ -442,7 +439,6 @@ a:hover { text-decoration: underline; }
     overflow-y: auto;
   }
   .modal.modal-lg { max-width: 100%; }
-  .modal-actions { border-radius: 0; }
 
   /* 표가 넘칠 때 가로 스크롤 */
   .table { display: block; overflow-x: auto; white-space: nowrap; }
