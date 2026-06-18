@@ -120,6 +120,9 @@ async function loadAll() {
 
   state.assignments = assignments.data || [];
 
+  await autoCompletePastSessions(); // 종료 시각 지난 회차 자동 완료 처리
+  buildPrograms();                  // done/status 반영해 다시 빌드
+
   renderCalendar();
   renderProgramList();
   renderRosters();
@@ -447,6 +450,29 @@ async function setSessionDone(sessionId, done) {
   renderCalendar();
   renderProgramList();
   renderBoard();
+}
+
+// 회차 종료 시각(날짜+종료시간)이 현재보다 과거인가
+function sessionEnded(s, now) {
+  const end = new Date(`${s.date}T${Util.hhmm(s.end_time)}:00`);
+  return end.getTime() < now.getTime();
+}
+
+// 종료 시각이 지난 회차를 자동으로 완료(done) 처리.
+//  · 취소된 교육과 이미 done인 회차는 건드리지 않음.
+//  · 컬럼 미존재(미리보기)면 조용히 패스.
+//  · 자동 완료 후 영향받은 교육의 상태(전 회차 완료 시 '완료')도 갱신.
+async function autoCompletePastSessions() {
+  const now = new Date();
+  const due = state.sessions.filter((s) => !s.done && s.status !== "취소" && sessionEnded(s, now));
+  if (!due.length) return;
+  const ids = due.map((s) => s.id);
+  const { error } = await window.sb.from("education_sessions").update({ done: true }).in("id", ids);
+  if (error) return; // 컬럼 없음/권한 등 → 조용히 통과(수동 체크로 폴백)
+  due.forEach((s) => { s.done = true; });
+  const pids = [...new Set(due.map((s) => s.program_id))];
+  for (const pid of pids) await autoStatusByDone(pid, false);
+  Util.toast(`지난 일정 ${due.length}건을 자동 완료 처리했습니다.`);
 }
 
 // 전 회차 done → 교육 상태 '완료'. 하나라도 풀리고 상태가 '완료'였으면 '확정'으로 복귀.
