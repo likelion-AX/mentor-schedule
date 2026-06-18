@@ -140,12 +140,14 @@ function buildPrograms() {
     sess.sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
     const r = sess[0];
     const timeVaries = sess.some((s) => s.start_time !== r.start_time || s.end_time !== r.end_time);
+    const locationVaries = sess.some((s) => (s.location || "") !== (r.location || ""));
     return {
       id,
-      title: r.title, client: r.client, location: r.location,
+      title: r.title, client: r.client, location: r.location, locationVaries,
       needed_mentors: r.needed_mentors, needed_facilitators: r.needed_facilitators,
       status: r.status, memo: r.memo, start_time: r.start_time, end_time: r.end_time, timeVaries,
       sessions: sess, firstDate: sess[0].date, lastDate: sess[sess.length - 1].date,
+      doneCount: sess.filter((s) => s.done).length,
     };
   });
   state.programs.sort((a, b) => a.firstDate.localeCompare(b.firstDate));
@@ -203,35 +205,71 @@ function setupCalendar() {
     selectable: true,
     dateClick: (info) => openModal(null, info.dateStr),
     eventClick: (info) => {
+      hideEventTip();
       state.selectedProgramId = info.event.extendedProps.programId;
       renderBoard();
       renderProgramList();
       document.querySelector(".board-col")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     },
+    // 기본은 한 줄(회사명 + 시작시간)만. 상세는 마우스 오버 시 떠다니는 카드로.
     eventContent: (arg) => {
       const s = arg.event.extendedProps.data;
-      const pid = s.program_id;
-      const mentors = assignedFor(pid, "mentor").map((c) => c.name).join(", ");
-      const facs = assignedFor(pid, "facilitator").map((c) => c.name).join(", ");
-      const dur = Util.durationLabel(s.start_time, s.end_time);
-      const mc = `${confirmedCount(pid, "mentor")}/${s.needed_mentors}`;
-      const fc = s.needed_facilitators ? ` · 퍼실 ${confirmedCount(pid, "facilitator")}/${s.needed_facilitators}` : "";
       const top = s.client || s.title;
-      const sub = s.client && s.title && s.title !== s.client ? s.title : "";
-      const color = progColor(pid);
+      const color = progColor(s.program_id);
       return {
-        html: `<div class="ev" style="border-left:4px solid ${color}; padding-left:5px">
-          <div class="ev-client">${Util.escapeHtml(top)}</div>
-          ${sub ? `<div class="ev-meta" style="font-weight:700; color:${color}">${Util.escapeHtml(sub)}</div>` : ""}
-          <div class="ev-meta">${Util.hhmm(s.start_time)}~${Util.hhmm(s.end_time)} · ${dur} · 👥${mc}${fc}</div>
-          <div class="ev-mentors ${mentors ? "" : "none"}">${mentors ? "👤 " + Util.escapeHtml(mentors) : "멘토 미배정"}</div>
-          ${facs ? `<div class="ev-mentors">🧑‍🏫 ${Util.escapeHtml(facs)}</div>` : ""}
+        html: `<div class="ev ev-compact" style="border-left:3px solid ${color}">
+          ${s.done ? `<span class="ev-done-badge">✓</span>` : ""}
+          <span class="ev-client">${Util.escapeHtml(top)}</span>
+          <span class="ev-time">${Util.hhmm(s.start_time)}</span>
         </div>`,
       };
     },
+    eventMouseEnter: (info) => showEventTip(info.event.extendedProps.data, info.el.getBoundingClientRect()),
+    eventMouseLeave: hideEventTip,
   });
   document.getElementById("calendar").classList.add("fc-admin");
   calendar.render();
+}
+
+// ---------- 캘린더 이벤트 호버 툴팁 (body에 띄워 셀 잘림/레이아웃 밀림 방지) ----------
+let evTip = null;
+function hideEventTip() {
+  if (evTip) { evTip.remove(); evTip = null; }
+}
+function showEventTip(s, rect) {
+  hideEventTip();
+  const pid = s.program_id;
+  const mentors = assignedFor(pid, "mentor").map((c) => c.name).join(", ");
+  const dur = Util.durationLabel(s.start_time, s.end_time);
+  const facs = assignedFor(pid, "facilitator").map((c) => c.name).join(", ");
+  const mc = `${confirmedCount(pid, "mentor")}/${s.needed_mentors}`;
+  const fc = `${confirmedCount(pid, "facilitator")}/${s.needed_facilitators}`;
+  const sub = s.client && s.title && s.title !== s.client ? s.title : "";
+  const color = progColor(pid);
+  evTip = document.createElement("div");
+  evTip.className = "ev-tip";
+  evTip.innerHTML = `
+    <div class="ev-tip-head" style="border-left:4px solid ${color}">
+      ${s.done ? `<span class="ev-tip-done">✓ 수행완료</span>` : ""}
+      <div class="ev-tip-title">${Util.escapeHtml(s.client || s.title)}</div>
+      ${sub ? `<div class="ev-tip-sub">${Util.escapeHtml(sub)}</div>` : ""}
+    </div>
+    <div class="ev-tip-row">🕒 ${Util.hhmm(s.start_time)}~${Util.hhmm(s.end_time)} · ${dur}</div>
+    ${s.location ? `<div class="ev-tip-row">📍 ${Util.escapeHtml(s.location)}</div>` : ""}
+    <div class="ev-tip-row">👤 멘토 ${mc} · ${mentors ? Util.escapeHtml(mentors) : "미배정"}</div>
+    ${(s.needed_facilitators || facs) ? `<div class="ev-tip-row">🧑‍🏫 퍼실 ${fc} · ${facs ? Util.escapeHtml(facs) : "미배정"}</div>` : ""}
+    ${s.note ? `<div class="ev-tip-row ev-tip-note">📝 ${Util.escapeHtml(s.note)}</div>` : ""}`;
+  document.body.appendChild(evTip);
+
+  // 위치: 이벤트 아래. 화면 밖이면 위/왼쪽으로 보정.
+  const tw = evTip.offsetWidth, th = evTip.offsetHeight;
+  const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+  let left = rect.left;
+  if (left + tw > vw - 8) left = vw - tw - 8;
+  let top = rect.bottom + 6;
+  if (top + th > vh - 8) top = rect.top - th - 6; // 아래 공간 없으면 위로
+  evTip.style.left = Math.max(8, left) + window.scrollX + "px";
+  evTip.style.top = Math.max(8, top) + window.scrollY + "px";
 }
 
 function renderCalendar() {
@@ -242,7 +280,7 @@ function renderCalendar() {
       id: s.id,
       start: Util.toDateTime(s.date, s.start_time),
       end: Util.toDateTime(s.date, s.end_time),
-      classNames: ["s-" + s.status],
+      classNames: s.done ? ["s-" + s.status, "s-done"] : ["s-" + s.status],
       extendedProps: { data: s, programId: s.program_id },
     });
   });
@@ -287,12 +325,15 @@ function renderProgramList() {
           </td>
           <td class="text-sm" style="white-space:nowrap">${p.timeVaries ? "<span class='text-caption text-muted'>회차별 상이</span>" : Util.hhmm(p.start_time) + "~" + Util.hhmm(p.end_time)}</td>
           <td>${p.timeVaries ? "<span class='text-caption text-muted'>—</span>" : `<span class="runtime">⏱ ${Util.durationLabel(p.start_time, p.end_time)}</span>`}</td>
-          <td class="text-sm">${Util.escapeHtml(p.location || "-")}</td>
+          <td class="text-sm">${p.locationVaries ? "<span class='text-caption text-muted'>회차별 상이</span>" : Util.escapeHtml(p.location || "-")}</td>
           <td>
             <div><span class="text-caption text-muted">멘토</span> ${chipsHtml(p.id, "mentor")} <span class="text-caption text-muted">(${confirmedCount(p.id, "mentor")}/${p.needed_mentors})</span></div>
             ${facLine}
           </td>
-          <td><span class="badge badge-status-${statusCls}">${p.status}</span></td>
+          <td>
+            <span class="badge badge-status-${statusCls}">${p.status}</span>
+            ${p.doneCount ? `<div class="text-caption" style="margin-top:4px; color:var(--color-info-positive)">✅ 수행 ${p.doneCount}/${p.sessions.length}</div>` : ""}
+          </td>
           <td style="text-align:right; white-space:nowrap">
             <button class="btn btn-ghost btn-sm" data-img="${p.id}" title="멘토 공유용 안내 이미지">🖼 이미지</button>
             <button class="btn btn-ghost btn-sm" data-edit="${p.id}">편집</button>
@@ -343,16 +384,20 @@ function renderBoard() {
   board.innerHTML = `
     <div style="margin-bottom: var(--space-5)">
       <div class="row-between" style="margin-bottom: var(--space-2)">
-        <span class="text-caption text-muted">회차 ${p.sessions.length}회 — 배정은 모든 회차에 함께 적용</span>
-        <span class="text-caption text-muted">회차·시간 변경은 ‘교육 편집’</span>
+        <strong class="text-sm">회차별 수행</strong>
+        <span class="text-caption text-muted">완료 ${p.doneCount}/${p.sessions.length} · 시간 변경은 ‘교육 편집’</span>
       </div>
-      <div class="mentor-chips">
-        ${p.sessions.map((s) => `<span class="badge badge-neutral">${Util.fmtDate(s.date)} ${Util.hhmm(s.start_time)}</span>`).join("")}
+      <div class="session-runs">
+        ${p.sessions.map((s) => sessionRunRow(s)).join("")}
       </div>
     </div>
     ${boardSection(p, "mentor", p.needed_mentors)}
     ${boardSection(p, "facilitator", p.needed_facilitators)}`;
 
+  board.querySelectorAll("[data-done]").forEach((cb) =>
+    cb.addEventListener("change", () => setSessionDone(cb.dataset.done, cb.checked)));
+  board.querySelectorAll("[data-note]").forEach((inp) =>
+    inp.addEventListener("change", () => setSessionNote(inp.dataset.note, inp.value.trim())));
   board.querySelectorAll("[data-board-schedule]").forEach((b) =>
     b.addEventListener("click", () => openMentorSchedule(b.dataset.boardSchedule)));
   board.querySelectorAll("[data-assign]").forEach((b) =>
@@ -361,6 +406,48 @@ function renderBoard() {
     b.addEventListener("click", () => unassign(b.dataset.unassign)));
   board.querySelectorAll("[data-confirm]").forEach((b) =>
     b.addEventListener("click", () => setAssignStatus(b.dataset.confirm, "확정")));
+}
+
+// done/note 컬럼이 아직 DB에 없을 때(마이그레이션 전)를 감지 — 미리보기 폴백용.
+// SQL(done.sql) 실행 후엔 이 분기를 타지 않고 실제 저장된다.
+function isMissingColumn(error) {
+  const m = ((error?.message || "") + " " + (error?.code || "")).toLowerCase();
+  return error?.code === "PGRST204" || error?.code === "42703" ||
+    (m.includes("column") && (m.includes("does not exist") || m.includes("could not find") || m.includes("schema cache")));
+}
+
+// 회차 1줄: 완료 체크 + 특이사항 입력 (운영팀이 교육 진행 후 기록)
+function sessionRunRow(s) {
+  return `
+    <div class="run-row ${s.done ? "run-done" : ""}">
+      <label class="run-check">
+        <input type="checkbox" data-done="${s.id}" ${s.done ? "checked" : ""} />
+        <span class="run-date">${Util.fmtDate(s.date)} <span class="text-caption text-muted">${Util.hhmm(s.start_time)}~${Util.hhmm(s.end_time)}</span>${s.location ? `<span class="run-loc text-caption text-muted">📍 ${Util.escapeHtml(s.location)}</span>` : ""}</span>
+      </label>
+      <input class="input run-note" data-note="${s.id}" value="${Util.escapeHtml(s.note || "")}" placeholder="특이사항 (예: 결석 2명, 장비 지연)" />
+    </div>`;
+}
+
+async function setSessionDone(sessionId, done) {
+  const { error } = await window.sb.from("education_sessions").update({ done }).eq("id", sessionId);
+  // 컬럼이 없으면(마이그레이션 전) 화면만 토글하는 미리보기로 동작. 그 외 오류는 진짜 실패.
+  if (error && !isMissingColumn(error)) { Util.toast("저장 실패: " + error.message); return loadAll(); }
+  const s = state.sessions.find((x) => x.id === sessionId);
+  if (s) s.done = done;
+  Util.toast(error ? "👀 미리보기 — DB 컬럼 추가 전이라 저장은 안 됩니다" : (done ? "수행 완료로 표시했습니다." : "완료 표시를 해제했습니다."));
+  buildPrograms();
+  renderCalendar();
+  renderProgramList();
+  renderBoard();
+}
+
+async function setSessionNote(sessionId, note) {
+  const s = state.sessions.find((x) => x.id === sessionId);
+  if (!s || (s.note || "") === note) return; // 변경 없음
+  s.note = note; // 로컬 즉시 반영 (재렌더 시 입력값 보존)
+  const { error } = await window.sb.from("education_sessions").update({ note }).eq("id", sessionId);
+  if (error && !isMissingColumn(error)) return Util.toast("특이사항 저장 실패: " + error.message);
+  Util.toast(error ? "👀 미리보기 — DB 컬럼 추가 전이라 저장은 안 됩니다" : "특이사항을 저장했습니다.");
 }
 
 function boardSection(program, type, needed) {
@@ -494,17 +581,18 @@ function generateRecurringDates(startISO, weekdaySet, count) {
   return out;
 }
 
-function addSessionRow(date = "", start = "10:00", end = "13:00") {
+function addSessionRow(date = "", start = "10:00", end = "13:00", loc = "") {
   const wrap = document.getElementById("sessionRows");
   const row = document.createElement("div");
   row.className = "row session-row";
-  row.style.cssText = "gap:6px; margin-bottom:6px; flex-wrap:nowrap; align-items:center";
+  row.style.cssText = "gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center";
   row.innerHTML =
     `<input type="date" class="input sr-date" value="${date}" style="flex:1.3; height:38px; min-width:120px" />` +
     `<input type="time" class="input sr-start" value="${start}" style="height:38px; width:auto" />` +
     `<span class="text-caption">~</span>` +
     `<input type="time" class="input sr-end" value="${end}" style="height:38px; width:auto" />` +
-    `<button type="button" class="btn btn-ghost btn-sm sr-del" style="color:var(--color-info-negative)">✕</button>`;
+    `<button type="button" class="btn btn-ghost btn-sm sr-del" style="color:var(--color-info-negative)">✕</button>` +
+    `<input type="text" class="input sr-loc" value="${Util.escapeHtml(loc)}" placeholder="📍 장소 (비우면 기본 장소 사용)" style="flex:1 1 100%; height:34px" />`;
   row.querySelector(".sr-del").addEventListener("click", () => row.remove());
   wrap.appendChild(row);
 }
@@ -514,9 +602,10 @@ function collectSessionRows() {
     const date = r.querySelector(".sr-date").value;
     const start = r.querySelector(".sr-start").value;
     const end = r.querySelector(".sr-end").value;
+    const loc = r.querySelector(".sr-loc").value.trim();
     if (!date) continue;
     if (!start || !end || end <= start) return { error: "회차 시간을 확인하세요 (종료가 시작보다 늦어야 함)." };
-    out.push({ date, start, end });
+    out.push({ date, start, end, loc });
   }
   return { rows: out };
 }
@@ -529,7 +618,8 @@ function repeatFill() {
   if (end <= start) return Util.toast("종료 시간이 시작보다 늦어야 합니다.");
   const dates = generateRecurringDates(startISO, selectedWeekdays(), count);
   if (!dates.length) return Util.toast("생성할 날짜가 없습니다.");
-  dates.forEach((d) => addSessionRow(d, start, end));
+  const defLoc = document.getElementById("sLocation").value.trim();
+  dates.forEach((d) => addSessionRow(d, start, end, defLoc));
   document.getElementById("repeatBox").classList.add("hidden");
   Util.toast(`${dates.length}개 회차 추가됨. 회차별 시간은 위에서 조정하세요.`);
 }
@@ -559,7 +649,7 @@ function openModal(program, prefillDate) {
 
   // 회차 행 채우기
   document.getElementById("sessionRows").innerHTML = "";
-  if (editing) program.sessions.forEach((s) => addSessionRow(s.date, Util.hhmm(s.start_time), Util.hhmm(s.end_time)));
+  if (editing) program.sessions.forEach((s) => addSessionRow(s.date, Util.hhmm(s.start_time), Util.hhmm(s.end_time), s.location || ""));
   else addSessionRow(prefillDate || "", "10:00", "13:00");
 
   // 반복 채우기 박스 초기화
@@ -594,10 +684,25 @@ async function saveProgram(e) {
   if (col.error) return Util.toast(col.error);
   if (!col.rows.length) return Util.toast("회차를 1개 이상 추가하세요.");
   const pid = id || uuid();
-  const sessions = col.rows.map((r) => ({ ...base, date: r.date, start_time: r.start, end_time: r.end, program_id: pid, created_by: me.id }));
+  // 편집 시 회차를 새로 insert 하므로, 같은 날짜의 수행기록(완료·특이사항)은 그대로 이어준다.
+  const prevByDate = {};
+  (state.programById[id]?.sessions || []).forEach((s) => { prevByDate[s.date] = s; });
+  const sessions = col.rows.map((r) => {
+    const prev = prevByDate[r.date];
+    return {
+      ...base, date: r.date, start_time: r.start, end_time: r.end, program_id: pid, created_by: me.id,
+      location: r.loc || base.location, // 회차별 장소(비우면 기본 장소)
+      done: prev?.done ?? false, note: prev?.note ?? "",
+    };
+  });
 
   // 삽입(새 회차) → 편집이면 기존 회차 제거 (배정은 program_id 기준이라 유지)
-  const ins = await window.sb.from("education_sessions").insert(sessions);
+  let ins = await window.sb.from("education_sessions").insert(sessions);
+  if (ins.error && isMissingColumn(ins.error)) {
+    // done/note 컬럼이 아직 없으면(마이그레이션 전) 그 키 빼고 재시도 — 교육 저장은 계속 동작.
+    const stripped = sessions.map(({ done, note, ...rest }) => rest);
+    ins = await window.sb.from("education_sessions").insert(stripped);
+  }
   if (ins.error) return Util.toast("저장 실패: " + ins.error.message);
   if (id) {
     const oldIds = (state.programById[id]?.sessions || []).map((s) => s.id);
@@ -1072,7 +1177,7 @@ function buildScheduleCanvas(p) {
   };
   const mentorNames = names("mentor");
   const facNames = names("facilitator");
-  const infoRows = [["장소", p.location || "미정"]];
+  const infoRows = [["장소", p.locationVaries ? "회차별 상이 (아래 참조)" : (p.location || "미정")]];
   if (!p.timeVaries)
     infoRows.push(["시간", `${Util.hhmm(p.start_time)} ~ ${Util.hhmm(p.end_time)} (${Util.durationLabel(p.start_time, p.end_time)})`]);
   infoRows.push(["멘토", mentorNames.length ? mentorNames.join(", ") : "배정 예정"]);
@@ -1104,7 +1209,7 @@ function buildScheduleCanvas(p) {
   ctx.fillText(`총 ${p.sessions.length}회`, PAD + 108, y + 3);
   y += 44;
 
-  const rowH = 54;
+  const rowH = p.locationVaries ? 78 : 54;
   p.sessions.forEach((s, i) => {
     if (i % 2 === 0) {
       ctx.fillStyle = "#F8F9FB";
@@ -1125,6 +1230,12 @@ function buildScheduleCanvas(p) {
     ctx.font = SHARE_FONT(500, 18);
     const dur = Util.durationLabel(s.start_time, s.end_time);
     ctx.fillText(dur, W - PAD - ctx.measureText(dur).width, ty);
+    // 회차별 장소가 다를 때만 각 줄에 장소 표기
+    if (p.locationVaries && s.location) {
+      ctx.fillStyle = "#6B7280";
+      ctx.font = SHARE_FONT(500, 18);
+      ctx.fillText("장소 · " + s.location, PAD + 104, ty + 28);
+    }
     y += rowH;
   });
 

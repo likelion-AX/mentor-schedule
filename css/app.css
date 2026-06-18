@@ -302,10 +302,22 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
   padding: var(--space-6);
 }
 .modal-title { font-size: var(--font-size-heading); font-weight: var(--font-weight-bold); margin-bottom: var(--space-4); }
-.modal-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-6); }
+.modal-actions {
+  display: flex; justify-content: flex-end; gap: var(--space-2);
+  position: sticky; bottom: calc(-1 * var(--space-6));
+  margin: var(--space-6) calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-bg-surface);
+  border-top: 1px solid var(--color-border-weak);
+  border-radius: 0 0 var(--radius-large) var(--radius-large);
+}
+/* 회차 빌더가 길어져도 모달이 화면을 넘지 않게 내부 스크롤 */
+#sessionRows { max-height: 38vh; overflow-y: auto; padding-right: 4px; }
 
 /* ---------- Utility ---------- */
 .row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
@@ -430,6 +442,7 @@ a:hover { text-decoration: underline; }
     overflow-y: auto;
   }
   .modal.modal-lg { max-width: 100%; }
+  .modal-actions { border-radius: 0; }
 
   /* 표가 넘칠 때 가로 스크롤 */
   .table { display: block; overflow-x: auto; white-space: nowrap; }
@@ -482,6 +495,18 @@ a:hover { text-decoration: underline; }
 .fc-event.s-확정   { background: var(--color-light-green-50); border-color: var(--color-light-green-500); color: var(--color-gray-800); }
 .fc-event.s-완료   { background: var(--color-gray-100);       border-color: var(--color-gray-400);        color: var(--color-gray-700); }
 .fc-event.s-취소   { background: var(--color-gray-50);        border-color: var(--color-gray-300);        color: var(--color-fg-disabled); text-decoration: line-through; }
+/* 수행 완료 회차 — 강조: 솔리드 청록 채움 + 흰 글씨 + 체크 배지(도장 느낌).
+   확정(연두)·완료상태(회색)와 확실히 구분되고 한눈에 띈다. */
+.fc-event.s-done   { background: var(--color-green-600) !important; border-color: var(--color-green-600) !important; box-shadow: 0 2px 6px rgba(5, 128, 109, 0.45) !important; }
+.fc-event.s-done .ev { border-left-color: rgba(255, 255, 255, 0.55) !important; }
+.fc-event.s-done .ev-client { color: #fff; font-weight: var(--font-weight-bold); }
+.fc-event.s-done .ev-time { color: #fff; opacity: 0.8; }
+.ev-done-badge {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #fff; color: var(--color-green-600);
+  font-size: 10px; font-weight: 900; line-height: 1;
+}
 
 /* 운영팀 캘린더 이벤트 내용 — 회사명 크게, 멘토/시간 요약 */
 .ev { padding: 3px 5px; line-height: 1.25; overflow: hidden; }
@@ -489,10 +514,16 @@ a:hover { text-decoration: underline; }
 .ev .ev-meta { font-size: 11px; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ev .ev-mentors { font-size: 11px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ev .ev-mentors.none { color: var(--color-info-negative); font-weight: var(--font-weight-semibold); }
+
+/* 컴팩트 이벤트: 기본은 한 줄(회사명 + 시작시간). 상세는 호버 툴팁(.ev-tip). */
+.ev.ev-compact { display: flex; align-items: center; gap: 5px; padding: 2px 5px; line-height: 1.3; overflow: hidden; }
+.ev-compact .ev-client { flex: 1; min-width: 0; font-weight: var(--font-weight-semibold); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-compact .ev-time { flex-shrink: 0; font-size: 10.5px; opacity: 0.65; font-variant-numeric: tabular-nums; }
+
 .fc .fc-daygrid-event { white-space: normal; }
-.fc-admin .fc-daygrid-day-frame { min-height: 110px; }
+.fc-admin .fc-daygrid-day-frame { min-height: 84px; }
 /* 같은 날 여러 교육: 카드처럼 띄워서 구분 */
-.fc-admin .fc-daygrid-event-harness { margin-bottom: 6px; }
+.fc-admin .fc-daygrid-event-harness { margin-bottom: 3px; }
 .fc-admin .fc-daygrid-day-events { padding: 4px 3px; }
 .fc-admin .fc-daygrid-event {
   border-radius: 7px;
@@ -500,6 +531,21 @@ a:hover { text-decoration: underline; }
   border-width: 1px;
 }
 .fc-admin .ev { padding: 5px 6px; }
+.fc-admin .ev.ev-compact { padding: 2px 6px; }
+
+/* 캘린더 이벤트 호버 툴팁 (body 직속, position:absolute로 띄움) */
+.ev-tip {
+  position: absolute; z-index: 9999; max-width: 280px; min-width: 180px;
+  background: var(--color-bg-surface); border: 1px solid var(--color-border-normal);
+  border-radius: var(--radius-medium); box-shadow: 0 6px 20px rgba(25, 31, 40, 0.18);
+  padding: 10px 12px; line-height: 1.45; pointer-events: none;
+}
+.ev-tip-head { padding-left: 8px; margin-bottom: 6px; }
+.ev-tip-done { display: inline-block; font-size: 11px; font-weight: var(--font-weight-bold); color: var(--color-green-600); margin-bottom: 2px; }
+.ev-tip-title { font-weight: var(--font-weight-bold); font-size: 13.5px; color: var(--color-fg-normal); }
+.ev-tip-sub { font-size: 12px; color: var(--color-fg-neutral); }
+.ev-tip-row { font-size: 12px; color: var(--color-fg-neutral); margin-top: 3px; white-space: normal; word-break: break-word; }
+.ev-tip-note { color: var(--color-fg-normal); background: var(--color-bg-normal); padding: 4px 6px; border-radius: var(--radius-medium); }
 
 /* 멘토 칩(담당 한눈에) */
 .mentor-chip {
@@ -511,6 +557,22 @@ a:hover { text-decoration: underline; }
 .mentor-chip.pending { background: var(--color-yellow-50); color: var(--color-yellow-500); }
 .mentor-chip.done    { background: var(--color-light-green-50); color: var(--color-info-positive); }
 .mentor-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* 회차별 수행 기록 (운영팀 보드: 완료 체크 + 특이사항) */
+.session-runs { display: flex; flex-direction: column; gap: 8px; }
+.run-row {
+  display: grid; grid-template-columns: minmax(150px, auto) 1fr; gap: 10px; align-items: center;
+  padding: 8px 10px; border: 1px solid var(--color-border-weak);
+  border-radius: var(--radius-medium); background: var(--color-bg-surface);
+}
+.run-row.run-done { background: var(--color-light-green-50); border-color: var(--color-light-green-500); }
+.run-check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
+.run-check input { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
+.run-date { font-size: var(--font-size-label); font-weight: var(--font-weight-semibold); color: var(--color-fg-normal); }
+.run-loc { display: block; margin-top: 2px; font-weight: var(--font-weight-regular); white-space: normal; }
+.run-row.run-done .run-date { color: var(--color-info-positive); }
+.run-note { height: 34px; }
+@media (max-width: 700px) { .run-row { grid-template-columns: 1fr; } }
 
 /* 러닝타임 pill */
 .runtime { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; font-weight: var(--font-weight-semibold); color: var(--color-fg-neutral); }
