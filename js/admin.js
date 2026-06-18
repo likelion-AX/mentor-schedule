@@ -44,6 +44,11 @@ async function init() {
     updateRepeatPreview();
   });
   document.getElementById("repeatFillBtn").addEventListener("click", repeatFill);
+  // 기본 장소를 바꾸면 비어있는 회차 칸 안내문(placeholder)도 같이 갱신
+  document.getElementById("sLocation").addEventListener("input", () => {
+    const ph = sessionLocPlaceholder();
+    document.querySelectorAll("#sessionRows .sr-loc").forEach((inp) => { inp.placeholder = ph; });
+  });
   ["rStartDate", "sCount"].forEach((id) =>
     document.getElementById(id).addEventListener("input", updateRepeatPreview));
   document.querySelectorAll("#weekdays .wd-btn").forEach((b) =>
@@ -581,6 +586,11 @@ function generateRecurringDates(startISO, weekdaySet, count) {
   return out;
 }
 
+// 회차 장소 입력란은 "이 회차만 다른 경우의 override". 비우면 기본 장소를 따른다.
+function sessionLocPlaceholder() {
+  const baseLoc = (document.getElementById("sLocation")?.value || "").trim();
+  return baseLoc ? `비우면 기본 장소(${baseLoc}) 사용` : "📍 이 회차만 다른 장소 (비우면 기본 장소)";
+}
 function addSessionRow(date = "", start = "10:00", end = "13:00", loc = "") {
   const wrap = document.getElementById("sessionRows");
   const row = document.createElement("div");
@@ -592,7 +602,7 @@ function addSessionRow(date = "", start = "10:00", end = "13:00", loc = "") {
     `<span class="text-caption">~</span>` +
     `<input type="time" class="input sr-end" value="${end}" style="height:38px; width:auto" />` +
     `<button type="button" class="btn btn-ghost btn-sm sr-del" style="color:var(--color-info-negative)">✕</button>` +
-    `<input type="text" class="input sr-loc" value="${Util.escapeHtml(loc)}" placeholder="📍 장소 (비우면 기본 장소 사용)" style="flex:1 1 100%; height:34px" />`;
+    `<input type="text" class="input sr-loc" value="${Util.escapeHtml(loc)}" placeholder="${Util.escapeHtml(sessionLocPlaceholder())}" style="flex:1 1 100%; height:34px" />`;
   row.querySelector(".sr-del").addEventListener("click", () => row.remove());
   wrap.appendChild(row);
 }
@@ -618,8 +628,7 @@ function repeatFill() {
   if (end <= start) return Util.toast("종료 시간이 시작보다 늦어야 합니다.");
   const dates = generateRecurringDates(startISO, selectedWeekdays(), count);
   if (!dates.length) return Util.toast("생성할 날짜가 없습니다.");
-  const defLoc = document.getElementById("sLocation").value.trim();
-  dates.forEach((d) => addSessionRow(d, start, end, defLoc));
+  dates.forEach((d) => addSessionRow(d, start, end)); // 장소는 비워둠 → 기본 장소 사용
   document.getElementById("repeatBox").classList.add("hidden");
   Util.toast(`${dates.length}개 회차 추가됨. 회차별 시간은 위에서 조정하세요.`);
 }
@@ -649,7 +658,11 @@ function openModal(program, prefillDate) {
 
   // 회차 행 채우기
   document.getElementById("sessionRows").innerHTML = "";
-  if (editing) program.sessions.forEach((s) => addSessionRow(s.date, Util.hhmm(s.start_time), Util.hhmm(s.end_time), s.location || ""));
+  // 회차 장소가 기본 장소와 같으면 비워둠(상속) → 나중에 기본 장소만 바꿔도 전 회차 반영.
+  // 기본과 다른 회차만 그 값을 채워 override 로 표시.
+  if (editing) program.sessions.forEach((s) =>
+    addSessionRow(s.date, Util.hhmm(s.start_time), Util.hhmm(s.end_time),
+      (s.location || "") === (program.location || "") ? "" : (s.location || "")));
   else addSessionRow(prefillDate || "", "10:00", "13:00");
 
   // 반복 채우기 박스 초기화
