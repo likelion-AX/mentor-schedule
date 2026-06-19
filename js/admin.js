@@ -107,6 +107,11 @@ async function init() {
     if (e.target.id === "materialModal") closeMaterialModal();
   });
 
+  // 목록 검색 + 페이지
+  bindSearch("programSearch", "program", renderProgramList);
+  bindSearch("mentorSearch", "mentor", () => renderRosterTable("mentorRosterList", "mentorPager", "mentor"));
+  bindSearch("facSearch", "facilitator", () => renderRosterTable("facRosterList", "facPager", "facilitator"));
+
   setupCalendar();
   await loadAll();
 }
@@ -332,13 +337,54 @@ function programDatesLabel(p) {
   return `${p.sessions.length}회 · ${Util.fmtDate(p.firstDate)} ~ ${Util.fmtDate(p.lastDate)}`;
 }
 
+// ---------- 목록 검색 + 페이지네이션 (교육 / 멘토 / 퍼실) ----------
+const PAGE_SIZE = 12;
+const listUI = {
+  program: { q: "", page: 1 },
+  mentor: { q: "", page: 1 },
+  facilitator: { q: "", page: 1 },
+};
+function renderPager(elId, total, page, onGo) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (total <= PAGE_SIZE) { el.innerHTML = ""; return; }
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const start = (page - 1) * PAGE_SIZE + 1;
+  const end = Math.min(page * PAGE_SIZE, total);
+  el.innerHTML = `
+    <span class="text-caption text-muted">${start}–${end} / 총 ${total}건</span>
+    <span class="row" style="gap: var(--space-1); align-items:center">
+      <button class="btn btn-ghost btn-sm" ${page <= 1 ? "disabled" : ""} data-pg="prev">‹ 이전</button>
+      <span class="text-caption text-muted">${page} / ${pages}</span>
+      <button class="btn btn-ghost btn-sm" ${page >= pages ? "disabled" : ""} data-pg="next">다음 ›</button>
+    </span>`;
+  el.querySelector('[data-pg="prev"]')?.addEventListener("click", () => onGo(page - 1));
+  el.querySelector('[data-pg="next"]')?.addEventListener("click", () => onGo(page + 1));
+}
+function bindSearch(inputId, key, rerender) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.addEventListener("input", () => { listUI[key].q = el.value; listUI[key].page = 1; rerender(); });
+}
+
 function renderProgramList() {
   const tbody = document.getElementById("sessionList");
+  const ui = listUI.program;
+  const q = ui.q.trim().toLowerCase();
+  const filtered = state.programs.filter((p) =>
+    !q || (p.client || "").toLowerCase().includes(q) || (p.title || "").toLowerCase().includes(q));
   if (!state.programs.length) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-caption text-muted">교육이 없습니다. “+ 새 교육”으로 추가하세요.</td></tr>`;
-    return;
+    return renderPager("programPager", 0, 1, () => {});
   }
-  tbody.innerHTML = state.programs
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-caption text-muted">‘${Util.escapeHtml(ui.q)}’ 검색 결과가 없습니다.</td></tr>`;
+    return renderPager("programPager", 0, 1, () => {});
+  }
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (ui.page > pages) ui.page = pages;
+  tbody.innerHTML = filtered
+    .slice((ui.page - 1) * PAGE_SIZE, ui.page * PAGE_SIZE)
     .map((p) => {
       const selected = p.id === state.selectedProgramId;
       const statusCls = p.status === "모집중" ? "제안" : p.status === "확정" ? "확정" : p.status === "완료" ? "수락" : "거절";
@@ -386,6 +432,8 @@ function renderProgramList() {
     }));
   tbody.querySelectorAll("[data-img]").forEach((b) =>
     b.addEventListener("click", () => openShareImage(b.dataset.img)));
+
+  renderPager("programPager", filtered.length, ui.page, (n) => { listUI.program.page = n; renderProgramList(); });
 }
 
 // ---------- 배정 보드 (교육 단위) ----------
@@ -963,16 +1011,28 @@ async function deleteProgram() {
 
 // ---------- 명단(초대) ----------
 function renderRosters() {
-  renderRosterTable("mentorRosterList", rosterOf("mentor"));
-  renderRosterTable("facRosterList", rosterOf("facilitator"));
+  renderRosterTable("mentorRosterList", "mentorPager", "mentor");
+  renderRosterTable("facRosterList", "facPager", "facilitator");
 }
-function renderRosterTable(tbodyId, list) {
+function renderRosterTable(tbodyId, pagerId, type) {
   const tbody = document.getElementById(tbodyId);
-  if (!list.length) {
+  const ui = listUI[type];
+  const q = ui.q.trim().toLowerCase();
+  const full = rosterOf(type);
+  const filtered = full.filter((v) =>
+    !q || (v.name || "").toLowerCase().includes(q) || (v.email || "").toLowerCase().includes(q));
+  if (!full.length) {
     tbody.innerHTML = `<tr><td colspan="4" class="text-caption text-muted">아직 없습니다. 위 버튼으로 초대하세요.</td></tr>`;
-    return;
+    return renderPager(pagerId, 0, 1, () => {});
   }
-  tbody.innerHTML = list
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-caption text-muted">‘${Util.escapeHtml(ui.q)}’ 검색 결과가 없습니다.</td></tr>`;
+    return renderPager(pagerId, 0, 1, () => {});
+  }
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (ui.page > pages) ui.page = pages;
+  tbody.innerHTML = filtered
+    .slice((ui.page - 1) * PAGE_SIZE, ui.page * PAGE_SIZE)
     .map((v) => {
       const statusBadge = v.used
         ? `<span class="badge badge-status-확정">가입완료</span>`
@@ -1000,6 +1060,8 @@ function renderRosterTable(tbodyId, list) {
     b.addEventListener("click", () => openEditPerson(b.dataset.editInvite)));
   tbody.querySelectorAll("[data-del-invite]").forEach((b) =>
     b.addEventListener("click", () => deleteInvite(b.dataset.delInvite)));
+
+  renderPager(pagerId, filtered.length, ui.page, (n) => { ui.page = n; renderRosterTable(tbodyId, pagerId, type); });
 }
 
 function openInviteModal(type) {

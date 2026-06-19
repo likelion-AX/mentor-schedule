@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260619h" />
-  <link rel="stylesheet" href="css/app.css?v=20260619h" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260619i" />
+  <link rel="stylesheet" href="css/app.css?v=20260619i" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -65,7 +65,10 @@
 
     <!-- 전체 일정 목록 (회사·러닝타임·장소·담당 멘토 한눈에) -->
     <div class="card" style="margin-top: var(--space-6)">
-      <div class="card-title">전체 교육 목록</div>
+      <div class="row-between" style="margin-bottom: var(--space-3)">
+        <div class="card-title" style="margin:0">전체 교육 목록</div>
+        <input class="input" id="programSearch" placeholder="🔍 회사·교육명 검색" style="width: 240px; max-width: 60%" />
+      </div>
       <table class="table">
         <thead>
           <tr>
@@ -75,6 +78,7 @@
         </thead>
         <tbody id="sessionList"></tbody>
       </table>
+      <div id="programPager" class="row-between" style="margin-top: var(--space-3)"></div>
     </div>
 
     <!-- 명단 관리 (멘토 / 퍼실리테이터 분리) -->
@@ -91,10 +95,12 @@
         <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
           초대한 아이디만 가입할 수 있어요. 비밀번호는 본인이 가입 시 정합니다.
         </p>
+        <input class="input" id="mentorSearch" placeholder="🔍 이름·이메일 검색" style="margin-bottom: var(--space-3)" />
         <table class="table">
           <thead><tr><th>이름</th><th>이메일</th><th>상태</th><th></th></tr></thead>
           <tbody id="mentorRosterList"></tbody>
         </table>
+        <div id="mentorPager" class="row-between" style="margin-top: var(--space-3)"></div>
       </div>
 
       <div class="card">
@@ -105,10 +111,12 @@
         <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
           퍼실리테이터도 초대받은 아이디로 로그인해 본인 배정을 확인합니다.
         </p>
+        <input class="input" id="facSearch" placeholder="🔍 이름·이메일 검색" style="margin-bottom: var(--space-3)" />
         <table class="table">
           <thead><tr><th>이름</th><th>이메일</th><th>상태</th><th></th></tr></thead>
           <tbody id="facRosterList"></tbody>
         </table>
+        <div id="facPager" class="row-between" style="margin-top: var(--space-3)"></div>
       </div>
     </div>
   </main>
@@ -375,9 +383,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260619h"></script>
-  <script src="js/auth.js?v=20260619h"></script>
-  <script src="js/util.js?v=20260619h"></script>
-  <script src="js/admin.js?v=20260619h"></script>
+  <script src="js/config.js?v=20260619i"></script>
+  <script src="js/auth.js?v=20260619i"></script>
+  <script src="js/util.js?v=20260619i"></script>
+  <script src="js/admin.js?v=20260619i"></script>
 </body>
 </html>
