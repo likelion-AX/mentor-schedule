@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260619a" />
-  <link rel="stylesheet" href="css/app.css?v=20260619a" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260619b" />
+  <link rel="stylesheet" href="css/app.css?v=20260619b" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -78,7 +78,11 @@
     </div>
 
     <!-- 명단 관리 (멘토 / 퍼실리테이터 분리) -->
-    <div class="grid-2" style="margin-top: var(--space-6)">
+    <div class="row-between" style="margin-top: var(--space-6); margin-bottom: var(--space-2)">
+      <div class="card-title" style="margin:0">명단 관리</div>
+      <button class="btn btn-secondary btn-sm" id="mergeBtn" title="가입 시 이름이 안 맞아 따로 생긴 자리를 실제 가입자에게 합칩니다">🔗 자리 합치기 / 중복 정리</button>
+    </div>
+    <div class="grid-2">
       <div class="card">
         <div class="row-between" style="margin-bottom: var(--space-3)">
           <div class="card-title" style="margin:0">멘토 명단</div>
@@ -305,11 +309,35 @@
     </div>
   </div>
 
+  <!-- 자리 합치기 / 중복 정리 모달 -->
+  <div class="modal-backdrop hidden" id="mergeModal">
+    <div class="modal">
+      <div class="modal-title">자리 합치기 / 중복 정리</div>
+      <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+        가입할 때 이름이 안 맞아 <b>따로 생긴 자리(미가입·중복)</b>를 실제 가입한 사람에게 합칩니다.
+        원본의 배정이 전부 대상에게 옮겨지고, 원본 자리는 정리돼요.
+      </p>
+      <div class="field">
+        <label for="mergeSource">옮길 자리 (원본 — 미가입/중복)</label>
+        <select class="select" id="mergeSource"></select>
+      </div>
+      <div class="field">
+        <label for="mergeTarget">받을 사람 (가입 완료)</label>
+        <select class="select" id="mergeTarget"></select>
+      </div>
+      <p class="text-caption" id="mergePreview" style="min-height: 18px"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="mergeCancelBtn">취소</button>
+        <button type="button" class="btn btn-primary" id="mergeConfirmBtn">합치기</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260619a"></script>
-  <script src="js/auth.js?v=20260619a"></script>
-  <script src="js/util.js?v=20260619a"></script>
-  <script src="js/admin.js?v=20260619a"></script>
+  <script src="js/config.js?v=20260619b"></script>
+  <script src="js/auth.js?v=20260619b"></script>
+  <script src="js/util.js?v=20260619b"></script>
+  <script src="js/admin.js?v=20260619b"></script>
 </body>
 </html>

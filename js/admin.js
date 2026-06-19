@@ -88,6 +88,16 @@ async function init() {
     if (email) { closeInviteModal(); deleteInvite(email); }
   });
 
+  // 자리 합치기 / 중복 정리
+  document.getElementById("mergeBtn").addEventListener("click", openMergeModal);
+  document.getElementById("mergeCancelBtn").addEventListener("click", closeMergeModal);
+  document.getElementById("mergeConfirmBtn").addEventListener("click", doMerge);
+  document.getElementById("mergeSource").addEventListener("change", updateMergePreview);
+  document.getElementById("mergeTarget").addEventListener("change", updateMergePreview);
+  document.getElementById("mergeModal").addEventListener("click", (e) => {
+    if (e.target.id === "mergeModal") closeMergeModal();
+  });
+
   setupCalendar();
   await loadAll();
 }
@@ -940,6 +950,103 @@ async function deleteInvite(email) {
   if (error) return Util.toast("삭제 실패: " + error.message);
   Util.toast("초대를 삭제했습니다.");
   loadAll();
+}
+
+// ---------- 자리 합치기 / 중복 정리 ----------
+// 가입 시 이름이 안 맞아 따로 생긴 자리(미가입 명단 또는 명단행이 사라진 dangling 배정)를
+// 실제 가입한 사람에게 합친다. 원본 배정 → 대상으로 이전(겹치는 교육은 중복 제거) + 원본 명단 정리.
+function mergeIsRegistered(email) {
+  const inv = state.rosterByEmail[email];
+  return !!(inv && inv.used && !email.endsWith("@pending.local"));
+}
+function mergeAssignCount(email) {
+  return state.assignments.filter((a) => a.person_email === email).length;
+}
+function mergeProgramsLabel(email) {
+  const pids = [...new Set(state.assignments.filter((a) => a.person_email === email).map((a) => a.program_id))];
+  return pids.map((pid) => state.programById[pid]).filter(Boolean).map((p) => p.client || p.title);
+}
+function buildMergeOptions() {
+  const emails = new Set([
+    ...state.assignments.map((a) => a.person_email),
+    ...state.roster.map((r) => r.email),
+  ]);
+  // 원본 후보: 가입완료가 아닌 자리 중, 배정이 있거나 미가입 명단으로 남은 것
+  const sources = [...emails]
+    .filter((e) => !mergeIsRegistered(e))
+    .filter((e) => mergeAssignCount(e) > 0 || (state.rosterByEmail[e] && !state.rosterByEmail[e].used))
+    .map((e) => {
+      const progs = mergeProgramsLabel(e);
+      const tail = progs.length ? ` (${progs.join(", ")})` : "";
+      return { email: e, label: `${nameOf(e)} · 배정 ${mergeAssignCount(e)}건${tail}` };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+  // 대상: 가입완료(실제 이메일)인 멘토/퍼실
+  const targets = state.roster
+    .filter((r) => r.used && !r.email.endsWith("@pending.local"))
+    .map((r) => ({ email: r.email, label: `${r.name} (${r.email})` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  return { sources, targets };
+}
+function openMergeModal() {
+  const { sources, targets } = buildMergeOptions();
+  const srcSel = document.getElementById("mergeSource");
+  const tgtSel = document.getElementById("mergeTarget");
+  srcSel.innerHTML = sources.length
+    ? `<option value="">선택…</option>` +
+      sources.map((s) => `<option value="${Util.escapeHtml(s.email)}">${Util.escapeHtml(s.label)}</option>`).join("")
+    : `<option value="">정리할 미가입/중복 자리가 없어요</option>`;
+  tgtSel.innerHTML =
+    `<option value="">선택…</option>` +
+    targets.map((t) => `<option value="${Util.escapeHtml(t.email)}">${Util.escapeHtml(t.label)}</option>`).join("");
+  document.getElementById("mergePreview").textContent = "";
+  document.getElementById("mergeModal").classList.remove("hidden");
+}
+function closeMergeModal() {
+  document.getElementById("mergeModal").classList.add("hidden");
+}
+function updateMergePreview() {
+  const src = document.getElementById("mergeSource").value;
+  const tgt = document.getElementById("mergeTarget").value;
+  const el = document.getElementById("mergePreview");
+  if (!src || !tgt) { el.textContent = ""; return; }
+  if (src === tgt) { el.style.color = "var(--color-info-negative)"; el.textContent = "원본과 대상이 같아요."; return; }
+  const srcA = state.assignments.filter((a) => a.person_email === src);
+  const tgtPrograms = new Set(state.assignments.filter((a) => a.person_email === tgt).map((a) => a.program_id));
+  const dup = srcA.filter((a) => tgtPrograms.has(a.program_id)).length;
+  el.style.color = "var(--color-fg-assistive)";
+  el.textContent = `→ ${nameOf(tgt)}에게 ${srcA.length - dup}건 이동, 중복 ${dup}건 제거. 원본 자리는 정리됩니다.`;
+}
+async function doMerge() {
+  const src = document.getElementById("mergeSource").value;
+  const tgt = document.getElementById("mergeTarget").value;
+  if (!src || !tgt) return Util.toast("원본과 대상을 모두 고르세요.");
+  if (src === tgt) return Util.toast("원본과 대상이 같습니다.");
+  const srcA = state.assignments.filter((a) => a.person_email === src);
+  const tgtPrograms = new Set(state.assignments.filter((a) => a.person_email === tgt).map((a) => a.program_id));
+  const dupIds = srcA.filter((a) => tgtPrograms.has(a.program_id)).map((a) => a.id);
+  const moveIds = srcA.filter((a) => !tgtPrograms.has(a.program_id)).map((a) => a.id);
+  if (!confirm(`'${nameOf(src)}'의 배정 ${srcA.length}건을 '${nameOf(tgt)}'에게 합칠까요?\n(이동 ${moveIds.length}건 · 중복 제거 ${dupIds.length}건)`)) return;
+  try {
+    if (dupIds.length) {
+      const r = await window.sb.from("assignments").delete().in("id", dupIds);
+      if (r.error) throw r.error;
+    }
+    if (moveIds.length) {
+      const r = await window.sb.from("assignments").update({ person_email: tgt }).in("id", moveIds);
+      if (r.error) throw r.error;
+    }
+    // 원본 명단(invite) 정리 — 미가입/placeholder 인 경우만 (가입완료 계정은 보존)
+    const inv = state.rosterByEmail[src];
+    if (inv && (!inv.used || src.endsWith("@pending.local"))) {
+      await window.sb.from("invites").delete().eq("email", src);
+    }
+    Util.toast("자리를 합쳤습니다.");
+    closeMergeModal();
+    loadAll();
+  } catch (err) {
+    Util.toast("합치기 실패: " + (err.message || err));
+  }
 }
 
 // ---------- 스마트 추가 (캡쳐/러프 텍스트 → 새 교육 폼 자동 채우기) ----------
