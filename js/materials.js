@@ -20,6 +20,7 @@ const Materials = (() => {
     if (!me) return; // 로그인 가드는 mentor.js 가 처리(리다이렉트)
     document.getElementById("materialForm")?.addEventListener("submit", onUpload);
     document.getElementById("mProgram")?.addEventListener("change", populateWeeks);
+    document.getElementById("mKind")?.addEventListener("change", toggleKind);
     await loadPrograms();
     await refresh();
   }
@@ -69,6 +70,13 @@ const Materials = (() => {
       prog.sessions.map((s, i) => `<option value="${i + 1}">${i + 1}회차 · ${Util.fmtDate(s.date)}</option>`).join("");
   }
 
+  /** 자료 종류(파일/링크)에 따라 입력 칸 전환 */
+  function toggleKind() {
+    const kind = document.getElementById("mKind")?.value || "file";
+    document.getElementById("mFileField")?.classList.toggle("hidden", kind !== "file");
+    document.getElementById("mLinkField")?.classList.toggle("hidden", kind !== "link");
+  }
+
   async function refresh() {
     const { data, error } = await window.sb
       .from("materials")
@@ -105,17 +113,22 @@ const Materials = (() => {
     wrap.innerHTML = list
       .map((m) => {
         const prog = m.program_id ? programLabel(m.program_id) + weekLabel(m) : "";
+        const isLink = !!m.link_url;
         return `
         <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
           <div class="row-between">
             <strong class="text-sm">${Util.escapeHtml(m.title || m.file_name || "제목 없음")}</strong>
-            <span class="text-caption text-muted">${fmtSize(m.file_size)}</span>
+            <span class="text-caption text-muted">${isLink ? "🔗 링크" : fmtSize(m.file_size)}</span>
           </div>
           ${prog ? `<div class="text-caption" style="color:var(--color-fg-assistive)">📚 ${Util.escapeHtml(prog)}</div>` : ""}
           ${m.description ? `<div class="text-caption text-muted">${Util.escapeHtml(m.description)}</div>` : ""}
-          ${m.file_name ? `<div class="text-caption text-muted">📄 ${Util.escapeHtml(m.file_name)}</div>` : ""}
+          ${isLink
+            ? `<div class="text-caption text-muted" style="word-break:break-all">🔗 ${Util.escapeHtml(m.link_url)}</div>`
+            : (m.file_name ? `<div class="text-caption text-muted">📄 ${Util.escapeHtml(m.file_name)}</div>` : "")}
           <div class="row mt-4" style="gap: var(--space-2)">
-            <button class="btn btn-secondary btn-sm" data-dl="${m.id}">⬇ 다운로드</button>
+            ${isLink
+              ? `<button class="btn btn-secondary btn-sm" data-open="${m.id}">🔗 열기</button>`
+              : `<button class="btn btn-secondary btn-sm" data-dl="${m.id}">⬇ 다운로드</button>`}
             <button class="btn btn-ghost btn-sm" data-edit="${m.id}">수정</button>
             <button class="btn btn-ghost btn-sm" data-del="${m.id}" style="color:var(--color-info-negative)">삭제</button>
           </div>
@@ -124,59 +137,73 @@ const Materials = (() => {
       .join("");
 
     wrap.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => download(b.dataset.dl)));
+    wrap.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => {
+      const m = list.find((x) => x.id === b.dataset.open);
+      if (m?.link_url) window.open(m.link_url, "_blank", "noopener");
+    }));
     wrap.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => editMeta(b.dataset.edit)));
     wrap.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => remove(b.dataset.del)));
   }
 
   async function onUpload(e) {
     e.preventDefault();
-    const file = document.getElementById("mFile").files[0];
-    if (!file) return Util.toast("파일을 선택하세요.");
-    if (file.size > MAX_BYTES) return Util.toast("파일이 너무 큽니다 (최대 50MB).");
-
+    const kind = document.getElementById("mKind").value; // "file" | "link"
     const title = document.getElementById("mTitle").value.trim();
     const description = document.getElementById("mDesc").value.trim();
     const program_id = document.getElementById("mProgram").value || null;
     const weekVal = document.getElementById("mWeek").value;
     const week_no = program_id && weekVal ? parseInt(weekVal, 10) : null;
 
+    // 입력 검증
+    let file = null;
+    let link_url = null;
+    if (kind === "link") {
+      link_url = document.getElementById("mLink").value.trim();
+      if (!link_url) return Util.toast("링크(URL)를 입력하세요.");
+      if (!/^https?:\/\//i.test(link_url)) return Util.toast("http:// 또는 https:// 로 시작하는 링크를 넣으세요.");
+    } else {
+      file = document.getElementById("mFile").files[0];
+      if (!file) return Util.toast("파일을 선택하세요.");
+      if (file.size > MAX_BYTES) return Util.toast("파일이 너무 큽니다 (최대 50MB).");
+    }
+
     const btn = document.getElementById("mSubmit");
     btn.disabled = true;
-    btn.textContent = "업로드 중…";
+    btn.textContent = kind === "link" ? "등록 중…" : "업로드 중…";
     try {
-      // Storage 키는 ASCII만 허용(한글·특수문자 → "Invalid key"). 확장자만 살려 uuid로 저장.
-      // 원본 파일명은 file_name 컬럼에 그대로 보존 → 화면 표시·다운로드 시 사용.
-      const dot = file.name.lastIndexOf(".");
-      const ext = dot >= 0 ? file.name.slice(dot).replace(/[^.\w]/g, "") : "";
-      const path = `${me.id}/${uid()}${ext}`;
-      const up = await window.sb.storage.from(BUCKET).upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: file.type || undefined,
-      });
-      if (up.error) throw up.error;
-
-      const ins = await window.sb.from("materials").insert({
-        owner_id: me.id,
-        program_id,
-        week_no,
-        title: title || file.name,
-        description,
-        file_path: path,
-        file_name: file.name,
-        file_type: file.type || "",
-        file_size: file.size,
-      });
-      if (ins.error) {
-        await window.sb.storage.from(BUCKET).remove([path]); // 행 삽입 실패 시 파일 롤백
-        throw ins.error;
+      const row = { owner_id: me.id, program_id, week_no, description };
+      if (kind === "link") {
+        Object.assign(row, { title: title || link_url, link_url, file_path: null, file_name: "", file_type: "", file_size: 0 });
+        const ins = await window.sb.from("materials").insert(row);
+        if (ins.error) throw ins.error;
+        Util.toast("링크를 등록했습니다.");
+      } else {
+        // Storage 키는 ASCII만 허용(한글·특수문자 → "Invalid key"). 확장자만 살려 uuid로 저장.
+        // 원본 파일명은 file_name 컬럼에 보존 → 화면 표시·다운로드 시 사용.
+        const dot = file.name.lastIndexOf(".");
+        const ext = dot >= 0 ? file.name.slice(dot).replace(/[^.\w]/g, "") : "";
+        const path = `${me.id}/${uid()}${ext}`;
+        const up = await window.sb.storage.from(BUCKET).upload(path, file, {
+          cacheControl: "3600", upsert: false, contentType: file.type || undefined,
+        });
+        if (up.error) throw up.error;
+        Object.assign(row, {
+          title: title || file.name, link_url: null,
+          file_path: path, file_name: file.name, file_type: file.type || "", file_size: file.size,
+        });
+        const ins = await window.sb.from("materials").insert(row);
+        if (ins.error) {
+          await window.sb.storage.from(BUCKET).remove([path]); // 행 삽입 실패 시 파일 롤백
+          throw ins.error;
+        }
+        Util.toast("자료를 올렸습니다.");
       }
-      Util.toast("자료를 올렸습니다.");
       e.target.reset();
+      toggleKind();
       populateWeeks();
       await refresh();
     } catch (err) {
-      Util.toast("업로드 실패: " + (err.message || err));
+      Util.toast((kind === "link" ? "등록 실패: " : "업로드 실패: ") + (err.message || err));
     } finally {
       btn.disabled = false;
       btn.textContent = "자료 올리기";

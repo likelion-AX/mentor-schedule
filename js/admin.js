@@ -430,6 +430,11 @@ function renderBoard() {
     b.addEventListener("click", () => setAssignStatus(b.dataset.confirm, "확정")));
   board.querySelectorAll("[data-mat-dl]").forEach((b) =>
     b.addEventListener("click", () => downloadMaterial(b.dataset.matDl)));
+  board.querySelectorAll("[data-mat-open]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const m = state.materials.find((x) => x.id === b.dataset.matOpen);
+      if (m?.link_url) window.open(m.link_url, "_blank", "noopener");
+    }));
 }
 
 // ---------- 교육자료 (운영팀: 선택 교육의 자료를 회차별로 보기·다운로드) ----------
@@ -444,12 +449,17 @@ function materialsSection(program) {
         const head = k === 0 ? "전체(공통)" : `${k}회차${sessDate(k)}`;
         const items = groups[k].map((m) => {
           const who = state.mentorsById[m.owner_id]?.name || "";
+          const isLink = !!m.link_url;
+          const sub = isLink ? "🔗 링크" : (m.file_name || "");
+          const action = isLink
+            ? `<button class="btn btn-ghost btn-sm" data-mat-open="${m.id}" title="열기">🔗</button>`
+            : `<button class="btn btn-ghost btn-sm" data-mat-dl="${m.id}" title="다운로드">⬇</button>`;
           return `<div class="row-between" style="padding:6px 0; border-bottom:1px solid var(--color-border-weak)">
             <div style="min-width:0">
               <span class="text-sm">${Util.escapeHtml(m.title || m.file_name || "제목 없음")}</span>
-              <span class="text-caption text-muted"> · ${Util.escapeHtml(m.file_name || "")}${who ? " · " + Util.escapeHtml(who) : ""}</span>
+              <span class="text-caption text-muted"> · ${Util.escapeHtml(sub)}${who ? " · " + Util.escapeHtml(who) : ""}</span>
             </div>
-            <button class="btn btn-ghost btn-sm" data-mat-dl="${m.id}" title="다운로드">⬇</button>
+            ${action}
           </div>`;
         }).join("");
         return `<div style="margin-bottom: var(--space-2)">

@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260619e" />
-  <link rel="stylesheet" href="css/app.css?v=20260619e" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260619f" />
+  <link rel="stylesheet" href="css/app.css?v=20260619f" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -100,8 +100,19 @@
             <input class="input" type="text" id="mDesc" placeholder="예: 비전공자용, 2026 개정판" />
           </div>
           <div class="field">
+            <label for="mKind">자료 종류</label>
+            <select class="input" id="mKind">
+              <option value="file">파일 업로드</option>
+              <option value="link">링크(URL)</option>
+            </select>
+          </div>
+          <div class="field" id="mFileField">
             <label for="mFile">파일</label>
-            <input class="input" type="file" id="mFile" required />
+            <input class="input" type="file" id="mFile" />
+          </div>
+          <div class="field hidden" id="mLinkField">
+            <label for="mLink">링크 (URL)</label>
+            <input class="input" type="url" id="mLink" placeholder="https://... (구글드라이브·노션 등)" />
           </div>
           <button class="btn btn-primary btn-block" type="submit" id="mSubmit">자료 올리기</button>
         </form>
@@ -112,10 +123,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260619e"></script>
-  <script src="js/auth.js?v=20260619e"></script>
-  <script src="js/util.js?v=20260619e"></script>
-  <script src="js/mentor.js?v=20260619e"></script>
-  <script src="js/materials.js?v=20260619e"></script>
+  <script src="js/config.js?v=20260619f"></script>
+  <script src="js/auth.js?v=20260619f"></script>
+  <script src="js/util.js?v=20260619f"></script>
+  <script src="js/mentor.js?v=20260619f"></script>
+  <script src="js/materials.js?v=20260619f"></script>
 </body>
 </html>

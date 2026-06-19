@@ -17,7 +17,8 @@ create table if not exists public.materials (
   week_no     int,                                        -- 주차/회차 순번(1-based). NULL=교육 전체 공통자료
   title       text not null default '',
   description text not null default '',
-  file_path   text not null,                              -- Storage 버킷 내 경로: {owner_id}/{uuid}_{파일명}
+  file_path   text,                                       -- Storage 경로(파일형). 링크형이면 NULL
+  link_url    text,                                       -- 링크형 자료 URL. 파일형이면 NULL
   file_name   text not null default '',                   -- 원본 파일명(표시용)
   file_type   text not null default '',                   -- MIME 타입
   file_size   bigint not null default 0,
