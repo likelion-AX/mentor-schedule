@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260619f" />
-  <link rel="stylesheet" href="css/app.css?v=20260619f" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260619g" />
+  <link rel="stylesheet" href="css/app.css?v=20260619g" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -309,6 +309,46 @@
     </div>
   </div>
 
+  <!-- 교육자료 추가 모달 (운영팀) -->
+  <div class="modal-backdrop hidden" id="materialModal">
+    <div class="modal">
+      <div class="modal-title" id="materialModalTitle">교육자료 추가</div>
+      <form id="adminMaterialForm">
+        <div class="field">
+          <label for="amWeek">회차</label>
+          <select class="select" id="amWeek"><option value="">전체(공통)</option></select>
+        </div>
+        <div class="field">
+          <label for="amTitle">제목 (선택 — 비우면 파일명/링크)</label>
+          <input class="input" id="amTitle" placeholder="예: 1강 슬라이드" />
+        </div>
+        <div class="field">
+          <label for="amDesc">설명 (선택)</label>
+          <input class="input" id="amDesc" placeholder="예: 비전공자용, 2026 개정판" />
+        </div>
+        <div class="field">
+          <label for="amKind">자료 종류</label>
+          <select class="select" id="amKind">
+            <option value="file">파일 업로드</option>
+            <option value="link">링크(URL)</option>
+          </select>
+        </div>
+        <div class="field" id="amFileField">
+          <label for="amFile">파일</label>
+          <input class="input" type="file" id="amFile" />
+        </div>
+        <div class="field hidden" id="amLinkField">
+          <label for="amLink">링크 (URL)</label>
+          <input class="input" type="url" id="amLink" placeholder="https://... (구글드라이브·노션 등)" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="amCancelBtn">취소</button>
+          <button type="submit" class="btn btn-primary" id="amSubmit">추가</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- 자리 합치기 / 중복 정리 모달 -->
   <div class="modal-backdrop hidden" id="mergeModal">
     <div class="modal">
@@ -335,9 +375,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260619f"></script>
-  <script src="js/auth.js?v=20260619f"></script>
-  <script src="js/util.js?v=20260619f"></script>
-  <script src="js/admin.js?v=20260619f"></script>
+  <script src="js/config.js?v=20260619g"></script>
+  <script src="js/auth.js?v=20260619g"></script>
+  <script src="js/util.js?v=20260619g"></script>
+  <script src="js/admin.js?v=20260619g"></script>
 </body>
 </html>

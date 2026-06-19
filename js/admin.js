@@ -99,6 +99,14 @@ async function init() {
     if (e.target.id === "mergeModal") closeMergeModal();
   });
 
+  // 운영팀 교육자료 추가 모달
+  document.getElementById("amCancelBtn").addEventListener("click", closeMaterialModal);
+  document.getElementById("adminMaterialForm").addEventListener("submit", saveMaterial);
+  document.getElementById("amKind").addEventListener("change", toggleMatKind);
+  document.getElementById("materialModal").addEventListener("click", (e) => {
+    if (e.target.id === "materialModal") closeMaterialModal();
+  });
+
   setupCalendar();
   await loadAll();
 }
@@ -435,6 +443,7 @@ function renderBoard() {
       const m = state.materials.find((x) => x.id === b.dataset.matOpen);
       if (m?.link_url) window.open(m.link_url, "_blank", "noopener");
     }));
+  document.getElementById("addMaterialBtn")?.addEventListener("click", () => openMaterialModal(p));
 }
 
 // ---------- 교육자료 (운영팀: 선택 교육의 자료를 회차별로 보기·다운로드) ----------
@@ -471,6 +480,7 @@ function materialsSection(program) {
   return `<div style="margin-bottom: var(--space-5)">
       <div class="row-between" style="margin-bottom: var(--space-2)">
         <strong class="text-sm">교육자료${mats.length ? ` (${mats.length})` : ""}</strong>
+        <button class="btn btn-secondary btn-sm" id="addMaterialBtn">+ 자료 추가</button>
       </div>
       ${body}
     </div>`;
@@ -484,6 +494,83 @@ async function downloadMaterial(id) {
     await Util.downloadAs(data.signedUrl, m.file_name); // 한글 파일명 보존
   } catch (_) {
     window.open(data.signedUrl, "_blank");
+  }
+}
+
+// ---------- 운영팀 교육자료 추가 (선택 교육에 파일/링크 업로드) ----------
+let materialModalProgram = null;
+function openMaterialModal(program) {
+  materialModalProgram = program;
+  document.getElementById("adminMaterialForm").reset();
+  document.getElementById("materialModalTitle").textContent = `교육자료 추가 — ${program.client || program.title}`;
+  document.getElementById("amWeek").innerHTML =
+    `<option value="">전체(공통)</option>` +
+    program.sessions.map((s, i) => `<option value="${i + 1}">${i + 1}회차 · ${Util.fmtDate(s.date)}</option>`).join("");
+  toggleMatKind();
+  document.getElementById("materialModal").classList.remove("hidden");
+}
+function closeMaterialModal() {
+  document.getElementById("materialModal").classList.add("hidden");
+  materialModalProgram = null;
+}
+function toggleMatKind() {
+  const kind = document.getElementById("amKind").value;
+  document.getElementById("amFileField").classList.toggle("hidden", kind !== "file");
+  document.getElementById("amLinkField").classList.toggle("hidden", kind !== "link");
+}
+async function saveMaterial(e) {
+  e.preventDefault();
+  const program = materialModalProgram;
+  if (!program) return;
+  const kind = document.getElementById("amKind").value;
+  const title = document.getElementById("amTitle").value.trim();
+  const description = document.getElementById("amDesc").value.trim();
+  const weekVal = document.getElementById("amWeek").value;
+  const week_no = weekVal ? parseInt(weekVal, 10) : null;
+
+  let file = null, link_url = null;
+  if (kind === "link") {
+    link_url = document.getElementById("amLink").value.trim();
+    if (!link_url) return Util.toast("링크(URL)를 입력하세요.");
+    if (!/^https?:\/\//i.test(link_url)) return Util.toast("http:// 또는 https:// 로 시작하는 링크를 넣으세요.");
+  } else {
+    file = document.getElementById("amFile").files[0];
+    if (!file) return Util.toast("파일을 선택하세요.");
+    if (file.size > 50 * 1024 * 1024) return Util.toast("파일이 너무 큽니다 (최대 50MB).");
+  }
+
+  const btn = document.getElementById("amSubmit");
+  btn.disabled = true;
+  btn.textContent = kind === "link" ? "등록 중…" : "업로드 중…";
+  try {
+    const row = { owner_id: me.id, program_id: program.id, week_no, description };
+    if (kind === "link") {
+      Object.assign(row, { title: title || link_url, link_url, file_path: null, file_name: "", file_type: "", file_size: 0 });
+      const ins = await window.sb.from("materials").insert(row);
+      if (ins.error) throw ins.error;
+    } else {
+      const dot = file.name.lastIndexOf(".");
+      const ext = dot >= 0 ? file.name.slice(dot).replace(/[^.\w]/g, "") : "";
+      const path = `${me.id}/${uuid()}${ext}`;
+      const up = await window.sb.storage.from("materials").upload(path, file, {
+        cacheControl: "3600", upsert: false, contentType: file.type || undefined,
+      });
+      if (up.error) throw up.error;
+      Object.assign(row, {
+        title: title || file.name, link_url: null,
+        file_path: path, file_name: file.name, file_type: file.type || "", file_size: file.size,
+      });
+      const ins = await window.sb.from("materials").insert(row);
+      if (ins.error) { await window.sb.storage.from("materials").remove([path]); throw ins.error; }
+    }
+    Util.toast("자료를 추가했습니다.");
+    closeMaterialModal();
+    loadAll();
+  } catch (err) {
+    Util.toast((kind === "link" ? "등록 실패: " : "업로드 실패: ") + (err.message || err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "추가";
   }
 }
 
