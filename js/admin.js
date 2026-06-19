@@ -16,6 +16,7 @@ let state = {
   mentorsById: {},
   blocksByEmail: {},
   assignments: [],     // {id, program_id, person_email, staff_type, status}
+  materials: [],       // {id, program_id, week_no, owner_id, title, file_path, ...}
   selectedProgramId: null,
 };
 const TYPE_LABEL = { mentor: "멘토", facilitator: "퍼실리테이터" };
@@ -104,12 +105,13 @@ async function init() {
 
 // ---------- 데이터 ----------
 async function loadAll() {
-  const [sessions, roster, mentors, blocks, assignments] = await Promise.all([
+  const [sessions, roster, mentors, blocks, assignments, materials] = await Promise.all([
     window.sb.from("education_sessions").select("*").order("date"),
     window.sb.from("invites").select("*").order("created_at"),
     window.sb.from("mentors").select("*"),
     window.sb.from("mentor_blocks").select("*"),
     window.sb.from("assignments").select("*"),
+    window.sb.from("materials").select("*").order("created_at", { ascending: false }),
   ]);
   if (sessions.error) return Util.toast("로드 실패: " + sessions.error.message);
 
@@ -129,6 +131,7 @@ async function loadAll() {
   });
 
   state.assignments = assignments.data || [];
+  state.materials = materials.error ? [] : (materials.data || []); // materials 테이블 없으면 조용히 빈 목록
 
   await autoCompletePastSessions(); // 종료 시각 지난 회차 자동 완료 처리
   buildPrograms();                  // done/status 반영해 다시 빌드
@@ -410,7 +413,8 @@ function renderBoard() {
       </div>
     </div>
     ${boardSection(p, "mentor", p.needed_mentors)}
-    ${boardSection(p, "facilitator", p.needed_facilitators)}`;
+    ${boardSection(p, "facilitator", p.needed_facilitators)}
+    ${materialsSection(p)}`;
 
   board.querySelectorAll("[data-done]").forEach((cb) =>
     cb.addEventListener("change", () => setSessionDone(cb.dataset.done, cb.checked)));
@@ -424,6 +428,51 @@ function renderBoard() {
     b.addEventListener("click", () => unassign(b.dataset.unassign)));
   board.querySelectorAll("[data-confirm]").forEach((b) =>
     b.addEventListener("click", () => setAssignStatus(b.dataset.confirm, "확정")));
+  board.querySelectorAll("[data-mat-dl]").forEach((b) =>
+    b.addEventListener("click", () => downloadMaterial(b.dataset.matDl)));
+}
+
+// ---------- 교육자료 (운영팀: 선택 교육의 자료를 회차별로 보기·다운로드) ----------
+function materialsSection(program) {
+  const mats = state.materials.filter((m) => m.program_id === program.id);
+  const groups = {};
+  mats.forEach((m) => { (groups[m.week_no || 0] ||= []).push(m); });
+  const keys = Object.keys(groups).map(Number).sort((a, b) => a - b);
+  const sessDate = (n) => (program.sessions[n - 1] ? " · " + Util.fmtDate(program.sessions[n - 1].date) : "");
+  const body = mats.length
+    ? keys.map((k) => {
+        const head = k === 0 ? "전체(공통)" : `${k}회차${sessDate(k)}`;
+        const items = groups[k].map((m) => {
+          const who = state.mentorsById[m.owner_id]?.name || "";
+          return `<div class="row-between" style="padding:6px 0; border-bottom:1px solid var(--color-border-weak)">
+            <div style="min-width:0">
+              <span class="text-sm">${Util.escapeHtml(m.title || m.file_name || "제목 없음")}</span>
+              <span class="text-caption text-muted"> · ${Util.escapeHtml(m.file_name || "")}${who ? " · " + Util.escapeHtml(who) : ""}</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" data-mat-dl="${m.id}" title="다운로드">⬇</button>
+          </div>`;
+        }).join("");
+        return `<div style="margin-bottom: var(--space-2)">
+          <div class="text-caption" style="color:var(--color-fg-assistive); font-weight: var(--font-weight-bold)">${Util.escapeHtml(head)}</div>
+          ${items}
+        </div>`;
+      }).join("")
+    : `<p class="text-caption text-muted">아직 올라온 자료가 없어요. (멘토가 ‘내 교육자료’에서 올립니다)</p>`;
+  return `<div style="margin-bottom: var(--space-5)">
+      <div class="row-between" style="margin-bottom: var(--space-2)">
+        <strong class="text-sm">교육자료${mats.length ? ` (${mats.length})` : ""}</strong>
+      </div>
+      ${body}
+    </div>`;
+}
+async function downloadMaterial(id) {
+  const m = state.materials.find((x) => x.id === id);
+  if (!m) return;
+  const { data, error } = await window.sb.storage
+    .from("materials")
+    .createSignedUrl(m.file_path, 60, { download: m.file_name || true });
+  if (error) return Util.toast("다운로드 실패: " + error.message);
+  window.open(data.signedUrl, "_blank");
 }
 
 // done/note 컬럼이 아직 DB에 없을 때(마이그레이션 전)를 감지 — 미리보기 폴백용.
