@@ -14,6 +14,7 @@ create table if not exists public.materials (
   id          uuid primary key default gen_random_uuid(),
   owner_id    uuid not null references public.mentors(id) on delete cascade,
   program_id  uuid,                                       -- 연결 교육(선택). education_sessions.program_id 와 같은 값
+  week_no     int,                                        -- 주차/회차 순번(1-based). NULL=교육 전체 공통자료
   title       text not null default '',
   description text not null default '',
   file_path   text not null,                              -- Storage 버킷 내 경로: {owner_id}/{uuid}_{파일명}
@@ -26,8 +27,9 @@ create table if not exists public.materials (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
-create index if not exists materials_owner_idx   on public.materials (owner_id);
-create index if not exists materials_program_idx on public.materials (program_id);
+create index if not exists materials_owner_idx        on public.materials (owner_id);
+create index if not exists materials_program_idx      on public.materials (program_id);
+create index if not exists materials_program_week_idx on public.materials (program_id, week_no);
 
 comment on table public.materials is '멘토 교육자료. 본인+운영팀만 열람(RLS). 파일은 Storage 버킷 materials.';
 

@@ -1,7 +1,7 @@
 // ============================================================================
 // materials.js — 멘토 교육자료 업로드/수정/삭제 (본인+운영팀만, RLS)
 //  · 파일은 Storage 버킷 'materials' 의 {내uid}/ 경로에, 메타는 public.materials 에.
-//  · 교육(program)에 선택적으로 연결. 분석(요약·QC)은 별도(에이전트)에서 채움.
+//  · 교육(program) + 주차/회차(week_no)로 구분. 분석(요약·QC)은 별도(에이전트)에서 채움.
 //  · mentor.js 의 requireAuth 와 별개로 본인 프로필만 받아 독립 동작.
 // ============================================================================
 
@@ -12,35 +12,61 @@ const Materials = (() => {
     crypto.randomUUID ? crypto.randomUUID() : "m-" + Date.now() + "-" + Math.floor(Math.random() * 1e9);
 
   let me = null;
-  let myPrograms = []; // [{ id, label }]
+  let myPrograms = []; // [{ id, label, sessions:[{date,start,end}] }]
   let list = [];
 
   async function init() {
     me = await Auth.getProfile();
     if (!me) return; // 로그인 가드는 mentor.js 가 처리(리다이렉트)
     document.getElementById("materialForm")?.addEventListener("submit", onUpload);
+    document.getElementById("mProgram")?.addEventListener("change", populateWeeks);
     await loadPrograms();
     await refresh();
   }
 
-  /** 내가 볼 수 있는 교육(배정된 것)으로 연결 드롭다운 채우기 */
+  /** 내가 볼 수 있는 교육(배정된 것)으로 연결 드롭다운 채우기 (회차 포함) */
   async function loadPrograms() {
     const { data } = await window.sb
       .from("education_sessions")
-      .select("program_id, title, client")
+      .select("program_id, title, client, date, start_time, end_time")
       .order("date");
-    const seen = new Map();
-    (data || []).forEach((s) => { if (!seen.has(s.program_id)) seen.set(s.program_id, s); });
-    myPrograms = [...seen.values()].map((s) => ({
-      id: s.program_id,
-      label: s.client && s.title && s.client !== s.title ? `${s.client} — ${s.title}` : (s.client || s.title || "제목 없음"),
-    }));
+    const map = new Map();
+    (data || []).forEach((s) => {
+      if (!map.has(s.program_id)) {
+        map.set(s.program_id, {
+          id: s.program_id,
+          label: s.client && s.title && s.client !== s.title ? `${s.client} — ${s.title}` : (s.client || s.title || "제목 없음"),
+          sessions: [],
+        });
+      }
+      map.get(s.program_id).sessions.push({ date: s.date, start: s.start_time, end: s.end_time });
+    });
+    myPrograms = [...map.values()];
+    myPrograms.forEach((p) => p.sessions.sort((a, b) => a.date.localeCompare(b.date)));
+
     const sel = document.getElementById("mProgram");
     if (sel) {
       sel.innerHTML =
         `<option value="">(교육 연결 안 함)</option>` +
         myPrograms.map((p) => `<option value="${p.id}">${Util.escapeHtml(p.label)}</option>`).join("");
     }
+    populateWeeks();
+  }
+
+  /** 선택한 교육의 회차로 '주차' 드롭다운 채우기 */
+  function populateWeeks() {
+    const sel = document.getElementById("mWeek");
+    if (!sel) return;
+    const prog = myPrograms.find((p) => p.id === document.getElementById("mProgram").value);
+    if (!prog) {
+      sel.innerHTML = `<option value="">전체(공통)</option>`;
+      sel.disabled = true;
+      return;
+    }
+    sel.disabled = false;
+    sel.innerHTML =
+      `<option value="">전체(공통)</option>` +
+      prog.sessions.map((s, i) => `<option value="${i + 1}">${i + 1}주차 · ${Util.fmtDate(s.date)}</option>`).join("");
   }
 
   async function refresh() {
@@ -55,6 +81,12 @@ const Materials = (() => {
 
   function programLabel(id) {
     return myPrograms.find((p) => p.id === id)?.label || "";
+  }
+  function weekLabel(m) {
+    if (!m.program_id) return "";
+    if (!m.week_no) return " · 공통";
+    const s = myPrograms.find((p) => p.id === m.program_id)?.sessions[m.week_no - 1];
+    return s ? ` · ${m.week_no}주차(${Util.fmtDate(s.date)})` : ` · ${m.week_no}주차`;
   }
 
   function fmtSize(bytes) {
@@ -72,7 +104,7 @@ const Materials = (() => {
     }
     wrap.innerHTML = list
       .map((m) => {
-        const prog = m.program_id ? programLabel(m.program_id) : "";
+        const prog = m.program_id ? programLabel(m.program_id) + weekLabel(m) : "";
         return `
         <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
           <div class="row-between">
@@ -105,6 +137,8 @@ const Materials = (() => {
     const title = document.getElementById("mTitle").value.trim();
     const description = document.getElementById("mDesc").value.trim();
     const program_id = document.getElementById("mProgram").value || null;
+    const weekVal = document.getElementById("mWeek").value;
+    const week_no = program_id && weekVal ? parseInt(weekVal, 10) : null;
 
     const btn = document.getElementById("mSubmit");
     btn.disabled = true;
@@ -125,6 +159,7 @@ const Materials = (() => {
       const ins = await window.sb.from("materials").insert({
         owner_id: me.id,
         program_id,
+        week_no,
         title: title || file.name,
         description,
         file_path: path,
@@ -138,6 +173,7 @@ const Materials = (() => {
       }
       Util.toast("자료를 올렸습니다.");
       e.target.reset();
+      populateWeeks();
       await refresh();
     } catch (err) {
       Util.toast("업로드 실패: " + (err.message || err));
