@@ -443,6 +443,8 @@ function renderBoard() {
       const m = state.materials.find((x) => x.id === b.dataset.matOpen);
       if (m?.link_url) window.open(m.link_url, "_blank", "noopener");
     }));
+  board.querySelectorAll("[data-mat-del]").forEach((b) =>
+    b.addEventListener("click", () => deleteMaterial(b.dataset.matDel)));
   document.getElementById("addMaterialBtn")?.addEventListener("click", () => openMaterialModal(p));
 }
 
@@ -468,7 +470,10 @@ function materialsSection(program) {
               <span class="text-sm">${Util.escapeHtml(m.title || m.file_name || "제목 없음")}</span>
               <span class="text-caption text-muted"> · ${Util.escapeHtml(sub)}${who ? " · " + Util.escapeHtml(who) : ""}</span>
             </div>
-            ${action}
+            <div class="row" style="gap:2px">
+              ${action}
+              <button class="btn btn-ghost btn-sm" data-mat-del="${m.id}" title="삭제" style="color:var(--color-info-negative)">🗑</button>
+            </div>
           </div>`;
         }).join("");
         return `<div style="margin-bottom: var(--space-2)">
@@ -495,6 +500,16 @@ async function downloadMaterial(id) {
   } catch (_) {
     window.open(data.signedUrl, "_blank");
   }
+}
+async function deleteMaterial(id) {
+  const m = state.materials.find((x) => x.id === id);
+  if (!m) return;
+  if (!confirm(`이 자료를 삭제할까요?\n${m.title || m.file_name || m.link_url || ""}`)) return;
+  const del = await window.sb.from("materials").delete().eq("id", id);
+  if (del.error) return Util.toast("삭제 실패: " + del.error.message);
+  if (m.file_path) await window.sb.storage.from("materials").remove([m.file_path]); // 파일형이면 파일도 정리
+  Util.toast("자료를 삭제했습니다.");
+  loadAll();
 }
 
 // ---------- 운영팀 교육자료 추가 (선택 교육에 파일/링크 업로드) ----------
