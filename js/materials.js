@@ -110,8 +110,11 @@ const Materials = (() => {
     btn.disabled = true;
     btn.textContent = "업로드 중…";
     try {
-      const safeName = file.name.replace(/[^\w.\-가-힣]+/g, "_");
-      const path = `${me.id}/${uid()}_${safeName}`;
+      // Storage 키는 ASCII만 허용(한글·특수문자 → "Invalid key"). 확장자만 살려 uuid로 저장.
+      // 원본 파일명은 file_name 컬럼에 그대로 보존 → 화면 표시·다운로드 시 사용.
+      const dot = file.name.lastIndexOf(".");
+      const ext = dot >= 0 ? file.name.slice(dot).replace(/[^.\w]/g, "") : "";
+      const path = `${me.id}/${uid()}${ext}`;
       const up = await window.sb.storage.from(BUCKET).upload(path, file, {
         cacheControl: "3600",
         upsert: false,
