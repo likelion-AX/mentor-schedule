@@ -1,7 +1,7 @@
 // ============================================================================
 // materials.js — 멘토 교육자료 업로드/수정/삭제 (본인+운영팀만, RLS)
 //  · 파일은 Storage 버킷 'materials' 의 {내uid}/ 경로에, 메타는 public.materials 에.
-//  · 교육(program) + 주차/회차(week_no)로 구분. 분석(요약·QC)은 별도(에이전트)에서 채움.
+//  · 교육(program) + 회차(week_no)로 구분. 분석(요약·QC)은 별도(에이전트)에서 채움.
 //  · mentor.js 의 requireAuth 와 별개로 본인 프로필만 받아 독립 동작.
 // ============================================================================
 
@@ -53,7 +53,7 @@ const Materials = (() => {
     populateWeeks();
   }
 
-  /** 선택한 교육의 회차로 '주차' 드롭다운 채우기 */
+  /** 선택한 교육의 회차 목록으로 '회차' 드롭다운 채우기 */
   function populateWeeks() {
     const sel = document.getElementById("mWeek");
     if (!sel) return;
@@ -66,7 +66,7 @@ const Materials = (() => {
     sel.disabled = false;
     sel.innerHTML =
       `<option value="">전체(공통)</option>` +
-      prog.sessions.map((s, i) => `<option value="${i + 1}">${i + 1}주차 · ${Util.fmtDate(s.date)}</option>`).join("");
+      prog.sessions.map((s, i) => `<option value="${i + 1}">${i + 1}회차 · ${Util.fmtDate(s.date)}</option>`).join("");
   }
 
   async function refresh() {
@@ -86,7 +86,7 @@ const Materials = (() => {
     if (!m.program_id) return "";
     if (!m.week_no) return " · 공통";
     const s = myPrograms.find((p) => p.id === m.program_id)?.sessions[m.week_no - 1];
-    return s ? ` · ${m.week_no}주차(${Util.fmtDate(s.date)})` : ` · ${m.week_no}주차`;
+    return s ? ` · ${m.week_no}회차(${Util.fmtDate(s.date)})` : ` · ${m.week_no}회차`;
   }
 
   function fmtSize(bytes) {
