@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260618e" />
-  <link rel="stylesheet" href="css/app.css?v=20260618e" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260619a" />
+  <link rel="stylesheet" href="css/app.css?v=20260619a" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -75,14 +75,43 @@
           <button class="btn btn-primary btn-block" type="submit">개인 일정 추가</button>
         </form>
       </div>
+
+      <!-- 교육자료 -->
+      <div class="card area-materials">
+        <div class="card-title">내 교육자료</div>
+        <p class="text-caption text-muted" style="margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-4)">
+          교육에 쓰는 자료를 올리고 관리하세요. 본인과 운영팀만 볼 수 있어요. (파일당 최대 50MB)
+        </p>
+        <form id="materialForm">
+          <div class="field">
+            <label for="mTitle">제목 (선택 — 비우면 파일명)</label>
+            <input class="input" type="text" id="mTitle" placeholder="예: AI 기초 1강 슬라이드" />
+          </div>
+          <div class="field">
+            <label for="mProgram">연결 교육 (선택)</label>
+            <select class="input" id="mProgram"><option value="">(교육 연결 안 함)</option></select>
+          </div>
+          <div class="field">
+            <label for="mDesc">설명 (선택)</label>
+            <input class="input" type="text" id="mDesc" placeholder="예: 비전공자용, 2026 개정판" />
+          </div>
+          <div class="field">
+            <label for="mFile">파일</label>
+            <input class="input" type="file" id="mFile" required />
+          </div>
+          <button class="btn btn-primary btn-block" type="submit" id="mSubmit">자료 올리기</button>
+        </form>
+        <div id="materialList" class="stack" style="margin-top: var(--space-5)"></div>
+      </div>
     </div>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260618e"></script>
-  <script src="js/auth.js?v=20260618e"></script>
-  <script src="js/util.js?v=20260618e"></script>
-  <script src="js/mentor.js?v=20260618e"></script>
+  <script src="js/config.js?v=20260619a"></script>
+  <script src="js/auth.js?v=20260619a"></script>
+  <script src="js/util.js?v=20260619a"></script>
+  <script src="js/mentor.js?v=20260619a"></script>
+  <script src="js/materials.js?v=20260619a"></script>
 </body>
 </html>
