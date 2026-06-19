@@ -187,11 +187,14 @@ const Materials = (() => {
     const m = list.find((x) => x.id === id);
     if (!m) return;
     // 비공개 버킷이라 서명 URL 발급(60초 유효)
-    const { data, error } = await window.sb.storage
-      .from(BUCKET)
-      .createSignedUrl(m.file_path, 60, { download: m.file_name || true });
+    const { data, error } = await window.sb.storage.from(BUCKET).createSignedUrl(m.file_path, 60);
     if (error) return Util.toast("다운로드 실패: " + error.message);
-    window.open(data.signedUrl, "_blank");
+    // 한글 파일명 보존: blob으로 받아 원본 이름으로 저장 (실패 시 새 탭 폴백)
+    try {
+      await Util.downloadAs(data.signedUrl, m.file_name);
+    } catch (_) {
+      window.open(data.signedUrl, "_blank");
+    }
   }
 
   async function editMeta(id) {

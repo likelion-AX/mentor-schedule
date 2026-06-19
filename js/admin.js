@@ -468,11 +468,13 @@ function materialsSection(program) {
 async function downloadMaterial(id) {
   const m = state.materials.find((x) => x.id === id);
   if (!m) return;
-  const { data, error } = await window.sb.storage
-    .from("materials")
-    .createSignedUrl(m.file_path, 60, { download: m.file_name || true });
+  const { data, error } = await window.sb.storage.from("materials").createSignedUrl(m.file_path, 60);
   if (error) return Util.toast("다운로드 실패: " + error.message);
-  window.open(data.signedUrl, "_blank");
+  try {
+    await Util.downloadAs(data.signedUrl, m.file_name); // 한글 파일명 보존
+  } catch (_) {
+    window.open(data.signedUrl, "_blank");
+  }
 }
 
 // done/note 컬럼이 아직 DB에 없을 때(마이그레이션 전)를 감지 — 미리보기 폴백용.

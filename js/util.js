@@ -61,6 +61,25 @@ const Util = {
     return (s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   },
 
+  /**
+   * 원격 URL을 내려받아 '원본 파일명'으로 저장.
+   * 한글 파일명이 Content-Disposition 인코딩에서 깨지는 걸 회피하려고,
+   * blob(같은 출처)으로 받아 a[download] 로 이름을 직접 지정한다.
+   */
+  async downloadAs(url, filename) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const blob = await res.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objUrl;
+    a.download = filename || "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+  },
+
   // ===================== 캘린더 연동 (오프라인, 백엔드 불필요) =====================
 
   /** "2026-06-15","10:00:00" → "20260615T100000" (로컬 floating time) */
