@@ -327,7 +327,7 @@ function chipsHtml(programId, type) {
   return `<div class="mentor-chips">${chips
     .map((c) => {
       const cls = c.status === "확정" ? "done" : c.status === "제안" ? "pending" : "";
-      return `<span class="mentor-chip ${cls}">${Util.escapeHtml(c.name)}<span style="opacity:.7">·${c.status}</span></span>`;
+      return `<span class="mentor-chip ${cls}" title="${c.status}">${Util.escapeHtml(c.name)}</span>`;
     })
     .join("")}</div>`;
 }
