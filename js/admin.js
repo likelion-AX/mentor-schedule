@@ -470,6 +470,7 @@ function renderBoard() {
     </div>
     ${boardSection(p, "mentor", p.needed_mentors)}
     ${boardSection(p, "facilitator", p.needed_facilitators)}
+    ${orphanSection(p)}
     ${materialsSection(p)}`;
 
   board.querySelectorAll("[data-done]").forEach((cb) =>
@@ -482,6 +483,8 @@ function renderBoard() {
     b.addEventListener("click", () => assignPerson(p.id, b.dataset.assign, b.dataset.type)));
   board.querySelectorAll("[data-unassign]").forEach((b) =>
     b.addEventListener("click", () => unassign(b.dataset.unassign)));
+  board.querySelectorAll("[data-settype]").forEach((b) =>
+    b.addEventListener("click", () => setAssignType(b.dataset.settype, b.dataset.type)));
   board.querySelectorAll("[data-confirm]").forEach((b) =>
     b.addEventListener("click", () => setAssignStatus(b.dataset.confirm, "확정")));
   board.querySelectorAll("[data-mat-dl]").forEach((b) =>
@@ -782,6 +785,43 @@ function boardRow(type, r) {
       <td>${statusCell}</td>
       <td style="text-align:right">${actionCell}</td>
     </tr>`;
+}
+
+// 명단 구분과 안 맞거나 명단에서 빠진 사람의 배정 — 보드 일반 칸엔 안 잡혀서 따로 surface해 정리.
+function orphanSection(program) {
+  const orphans = state.assignments.filter((a) =>
+    a.program_id === program.id &&
+    !state.roster.some((r) => r.email === a.person_email && r.staff_type === a.staff_type));
+  if (!orphans.length) return "";
+  const rows = orphans
+    .map((a) => {
+      const other = a.staff_type === "facilitator" ? "mentor" : "facilitator";
+      return `<div class="row-between" style="padding:6px 0; border-bottom:1px solid var(--color-border-weak)">
+        <div style="min-width:0">
+          <span class="text-sm">${Util.escapeHtml(nameOf(a.person_email))}</span>
+          <span class="text-caption text-muted"> · ${TYPE_LABEL[a.staff_type] || a.staff_type}로 배정됨 (명단 구분과 불일치)</span>
+        </div>
+        <div class="row" style="gap:4px">
+          <button class="btn btn-secondary btn-sm" data-settype="${a.id}" data-type="${other}">${TYPE_LABEL[other]}로</button>
+          <button class="btn btn-ghost btn-sm" data-unassign="${a.id}" style="color:var(--color-info-negative)">해제</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+  return `<div style="margin-bottom: var(--space-5)">
+      <div class="row-between" style="margin-bottom: var(--space-2)">
+        <strong class="text-sm" style="color:var(--color-info-negative)">⚠️ 정리 필요한 배정</strong>
+      </div>
+      <p class="text-caption text-muted" style="margin-bottom: var(--space-2)">명단 구분과 안 맞는 배정이에요. 올바른 구분으로 바꾸거나 해제하세요.</p>
+      ${rows}
+    </div>`;
+}
+
+async function setAssignType(id, type) {
+  const { error } = await window.sb.from("assignments").update({ staff_type: type }).eq("id", id);
+  if (error) return Util.toast("변경 실패: " + error.message);
+  Util.toast(`${TYPE_LABEL[type] || type}(으)로 변경했습니다.`);
+  loadAll();
 }
 
 async function assignPerson(programId, email, type) {
