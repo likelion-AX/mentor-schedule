@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260622a" />
-  <link rel="stylesheet" href="css/app.css?v=20260622a" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260622b" />
+  <link rel="stylesheet" href="css/app.css?v=20260622b" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -74,6 +74,27 @@
           </div>
           <button class="btn btn-primary btn-block" type="submit">개인 일정 추가</button>
         </form>
+
+        <div style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-border-weak)">
+          <div class="text-sm" style="font-weight: 600; margin-bottom: var(--space-2)">📥 구글 캘린더에서 가져오기</div>
+          <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+            구글에 적어둔 개인 약속을 자동으로 <b>'불가 시간'</b>으로 가져옵니다.
+            <b>제목·내용은 저장하지 않고 시간만</b> 가져와요 (운영팀에도 시간만 보임).
+          </p>
+          <div id="gcalImport" class="stack"></div>
+          <details style="margin-top: var(--space-3)">
+            <summary class="text-caption" style="cursor:pointer">구글 "비공개 주소" 찾는 법</summary>
+            <ol class="text-caption text-muted" style="margin: var(--space-2) 0 0; padding-left: 1.2em; line-height: 1.7">
+              <li>PC에서 <b>구글 캘린더</b>(calendar.google.com) 열기</li>
+              <li>왼쪽 <b>내 캘린더</b>에서 본인 캘린더에 마우스 올리고 <b>⋮ → 설정 및 공유</b></li>
+              <li>아래로 내려 <b>캘린더 통합</b> → <b>비공개 주소(iCal 형식)</b> 의 주소 복사</li>
+              <li>아래 칸에 붙여넣고 <b>연결</b></li>
+            </ol>
+            <p class="text-caption" style="color: var(--color-danger, #E12337); margin-top: var(--space-2)">
+              ⚠️ 이 주소는 본인 구글 캘린더를 읽을 수 있는 비밀 주소예요. 본인만 보관되고(운영팀도 못 봄) 남에게 공유 금지.
+            </p>
+          </details>
+        </div>
       </div>
 
       <!-- 구글 캘린더 자동 동기화 -->
@@ -151,10 +172,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260622a"></script>
-  <script src="js/auth.js?v=20260622a"></script>
-  <script src="js/util.js?v=20260622a"></script>
-  <script src="js/mentor.js?v=20260622a"></script>
-  <script src="js/materials.js?v=20260622a"></script>
+  <script src="js/config.js?v=20260622b"></script>
+  <script src="js/auth.js?v=20260622b"></script>
+  <script src="js/util.js?v=20260622b"></script>
+  <script src="js/mentor.js?v=20260622b"></script>
+  <script src="js/materials.js?v=20260622b"></script>
 </body>
 </html>
