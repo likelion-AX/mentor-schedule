@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260619f" />
-  <link rel="stylesheet" href="css/app.css?v=20260619f" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260622a" />
+  <link rel="stylesheet" href="css/app.css?v=20260622a" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -76,6 +76,34 @@
         </form>
       </div>
 
+      <!-- 구글 캘린더 자동 동기화 -->
+      <div class="card area-sync">
+        <div class="card-title">📅 구글 캘린더 자동 동기화</div>
+        <p class="text-caption text-muted" style="margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-4)">
+          아래 주소를 구글 캘린더에 한 번만 등록하면, 배정 교육·개인 일정이 자동으로 들어옵니다.
+          <b>본인만 아는 비밀 주소</b>예요. 남에게 공유하지 마세요.
+        </p>
+        <div class="field">
+          <label for="feedUrl">내 구독 주소</label>
+          <input class="input" type="text" id="feedUrl" readonly value="불러오는 중…" onclick="this.select()" />
+        </div>
+        <div class="row" style="gap: var(--space-2)">
+          <button class="btn btn-primary btn-sm" id="copyFeed" type="button">주소 복사</button>
+          <button class="btn btn-ghost btn-sm" id="resetFeed" type="button">주소 재발급</button>
+        </div>
+        <details style="margin-top: var(--space-4)">
+          <summary class="text-caption" style="cursor:pointer">구글 캘린더에 등록하는 법</summary>
+          <ol class="text-caption text-muted" style="margin: var(--space-2) 0 0; padding-left: 1.2em; line-height: 1.7">
+            <li>위 <b>주소 복사</b>를 누릅니다.</li>
+            <li>PC에서 <b>구글 캘린더</b>(calendar.google.com)를 엽니다.</li>
+            <li>왼쪽 <b>다른 캘린더 +</b> → <b>URL로 추가</b>를 클릭합니다.</li>
+            <li>복사한 주소를 붙여넣고 <b>캘린더 추가</b>를 누릅니다.</li>
+            <li>끝! 이후 일정이 바뀌면 구글이 자동으로 가져옵니다.<br>
+              <span style="opacity:.8">(구글 갱신 주기상 반영까지 몇 시간~하루 걸릴 수 있어요. 즉시 보려면 배정 카드의 ⬇.ics 사용)</span></li>
+          </ol>
+        </details>
+      </div>
+
       <!-- 교육자료 -->
       <div class="card area-materials">
         <div class="card-title">내 교육자료</div>
@@ -123,10 +151,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260619f"></script>
-  <script src="js/auth.js?v=20260619f"></script>
-  <script src="js/util.js?v=20260619f"></script>
-  <script src="js/mentor.js?v=20260619f"></script>
-  <script src="js/materials.js?v=20260619f"></script>
+  <script src="js/config.js?v=20260622a"></script>
+  <script src="js/auth.js?v=20260622a"></script>
+  <script src="js/util.js?v=20260622a"></script>
+  <script src="js/mentor.js?v=20260622a"></script>
+  <script src="js/materials.js?v=20260622a"></script>
 </body>
 </html>

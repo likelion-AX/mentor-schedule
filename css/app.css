@@ -275,6 +275,7 @@ a:hover { text-decoration: underline; }
   grid-template-areas:
     "personal  calendar"
     "assign    calendar"
+    "sync      calendar"
     "materials materials";
   gap: var(--space-6);
   align-items: start;
@@ -282,11 +283,12 @@ a:hover { text-decoration: underline; }
 .area-personal  { grid-area: personal; }
 .area-assign    { grid-area: assign; }
 .area-calendar  { grid-area: calendar; }
+.area-sync      { grid-area: sync; }
 .area-materials { grid-area: materials; }
 @media (max-width: 900px) {
   .mentor-grid {
     grid-template-columns: 1fr;
-    grid-template-areas: "assign" "calendar" "personal" "materials";
+    grid-template-areas: "assign" "calendar" "personal" "sync" "materials";
     gap: var(--space-4);
   }
 }

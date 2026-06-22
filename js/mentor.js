@@ -24,8 +24,44 @@ async function init() {
 
   setupCalendar();
   document.getElementById("blockForm").addEventListener("submit", onAddBlock);
+  setupCalendarSync();
 
   await refreshAll();
+}
+
+// ===================== 구글 캘린더 자동 동기화 (구독 피드) =====================
+function feedUrlFor(token) {
+  return `${window.APP_CONFIG.SUPABASE_URL}/functions/v1/calendar-feed?token=${token}`;
+}
+
+async function setupCalendarSync() {
+  const input = document.getElementById("feedUrl");
+  if (!input) return;
+
+  const { data: token, error } = await window.sb.rpc("my_calendar_token");
+  if (error || !token) {
+    input.value = "주소를 불러오지 못했어요. 새로고침해 주세요.";
+    return;
+  }
+  input.value = feedUrlFor(token);
+
+  document.getElementById("copyFeed")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(input.value);
+      Util.toast("구독 주소를 복사했어요.");
+    } catch {
+      input.select();
+      Util.toast("주소를 길게 눌러 직접 복사해 주세요.");
+    }
+  });
+
+  document.getElementById("resetFeed")?.addEventListener("click", async () => {
+    if (!confirm("주소를 재발급하면 기존 주소로 등록한 구독은 더 이상 갱신되지 않습니다.\n계속할까요?")) return;
+    const { data: nt, error: e2 } = await window.sb.rpc("reset_calendar_token");
+    if (e2 || !nt) return Util.toast("재발급 실패: " + (e2?.message || ""));
+    input.value = feedUrlFor(nt);
+    Util.toast("새 주소를 발급했어요. 구글 캘린더에 다시 등록해 주세요.");
+  });
 }
 
 function setupCalendar() {
