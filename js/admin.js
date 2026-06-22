@@ -459,7 +459,7 @@ function renderBoard() {
   head.querySelector("#shareImgBtn").addEventListener("click", () => openShareImage(p.id));
 
   board.innerHTML = `
-    <div style="margin-bottom: var(--space-5)">
+    <div style="margin-bottom: var(--space-3)">
       <div class="row-between" style="margin-bottom: var(--space-2)">
         <strong class="text-sm">회차별 수행</strong>
         <span class="text-caption text-muted">완료 ${p.doneCount}/${p.sessions.length} · 시간 변경은 ‘교육 편집’</span>
@@ -533,7 +533,7 @@ function materialsSection(program) {
         </div>`;
       }).join("")
     : `<p class="text-caption text-muted">아직 올라온 자료가 없어요. (멘토가 ‘내 교육자료’에서 올립니다)</p>`;
-  return `<div style="margin-bottom: var(--space-5)">
+  return `<div style="margin-bottom: var(--space-3)">
       <div class="row-between" style="margin-bottom: var(--space-2)">
         <strong class="text-sm">교육자료${mats.length ? ` (${mats.length})` : ""}</strong>
         <button class="btn btn-secondary btn-sm" id="addMaterialBtn">+ 자료 추가</button>
@@ -746,7 +746,7 @@ function boardSection(program, type, needed) {
     ? rows.map((r) => boardRow(type, r)).join("")
     : `<tr><td colspan="4" class="text-caption text-muted">${TYPE_LABEL[type]} 명단이 비어 있어요. 아래에서 초대하세요.</td></tr>`;
   return `
-    <div style="margin-bottom: var(--space-5)">
+    <div style="margin-bottom: var(--space-3)">
       <div class="row-between" style="margin-bottom: var(--space-2)">
         <strong class="text-sm">${TYPE_LABEL[type]} 배정</strong>
         <span class="badge badge-neutral">확정 ${confirmed} / 필요 ${needed || 0}</span>
@@ -808,7 +808,7 @@ function orphanSection(program) {
       </div>`;
     })
     .join("");
-  return `<div style="margin-bottom: var(--space-5)">
+  return `<div style="margin-bottom: var(--space-3)">
       <div class="row-between" style="margin-bottom: var(--space-2)">
         <strong class="text-sm" style="color:var(--color-info-negative)">⚠️ 정리 필요한 배정</strong>
       </div>

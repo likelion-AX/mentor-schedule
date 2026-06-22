@@ -257,7 +257,7 @@ a:hover { text-decoration: underline; }
 /* 배정 보드 표(폭 400px)는 좁아서 헤더가 세로로 깨지기 쉬움 → 헤더 한 줄 고정,
    칸 패딩 축소, 긴 이메일은 줄바꿈해 다른 칸을 밀지 않게. */
 #board .table th { white-space: nowrap; }
-#board .table th, #board .table td { padding: var(--space-2); }
+#board .table th, #board .table td { padding: var(--space-1) var(--space-2); }
 #board .table td:first-child .text-caption { word-break: break-all; }
 
 /* 교육 목록: 행 밀도 높이기(패딩·칩 축소). class="table compact" 에만 적용 */
@@ -562,10 +562,10 @@ a:hover { text-decoration: underline; }
 .mentor-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 
 /* 회차별 수행 기록 (운영팀 보드: 완료 체크 + 특이사항) */
-.session-runs { display: flex; flex-direction: column; gap: 8px; }
+.session-runs { display: flex; flex-direction: column; gap: 6px; }
 .run-row {
   display: grid; grid-template-columns: minmax(150px, auto) 1fr; gap: 10px; align-items: center;
-  padding: 8px 10px; border: 1px solid var(--color-border-weak);
+  padding: 5px 9px; border: 1px solid var(--color-border-weak);
   border-radius: var(--radius-medium); background: var(--color-bg-surface);
 }
 .run-row.run-done { background: var(--color-light-green-50); border-color: var(--color-light-green-500); }
@@ -574,7 +574,7 @@ a:hover { text-decoration: underline; }
 .run-date { font-size: var(--font-size-label); font-weight: var(--font-weight-semibold); color: var(--color-fg-normal); }
 .run-loc { display: block; margin-top: 2px; font-weight: var(--font-weight-regular); white-space: normal; }
 .run-row.run-done .run-date { color: var(--color-info-positive); }
-.run-note { height: 34px; }
+.run-note { height: 30px; }
 @media (max-width: 700px) { .run-row { grid-template-columns: 1fr; } }
 
 /* 러닝타임 pill */
