@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260622b" />
-  <link rel="stylesheet" href="css/app.css?v=20260622b" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260622c" />
+  <link rel="stylesheet" href="css/app.css?v=20260622c" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -83,16 +83,32 @@
           </p>
           <div id="gcalImport" class="stack"></div>
           <details style="margin-top: var(--space-3)">
-            <summary class="text-caption" style="cursor:pointer">구글 "비공개 주소" 찾는 법</summary>
-            <ol class="text-caption text-muted" style="margin: var(--space-2) 0 0; padding-left: 1.2em; line-height: 1.7">
-              <li>PC에서 <b>구글 캘린더</b>(calendar.google.com) 열기</li>
-              <li>왼쪽 <b>내 캘린더</b>에서 본인 캘린더에 마우스 올리고 <b>⋮ → 설정 및 공유</b></li>
-              <li>아래로 내려 <b>캘린더 통합</b> → <b>비공개 주소(iCal 형식)</b> 의 주소 복사</li>
-              <li>아래 칸에 붙여넣고 <b>연결</b></li>
-            </ol>
-            <p class="text-caption" style="color: var(--color-danger, #E12337); margin-top: var(--space-2)">
-              ⚠️ 이 주소는 본인 구글 캘린더를 읽을 수 있는 비밀 주소예요. 본인만 보관되고(운영팀도 못 봄) 남에게 공유 금지.
-            </p>
+            <summary class="text-caption" style="cursor:pointer"><b>구글 "비공개 주소(iCal)" 찾는 법</b> — 눌러서 펼치기</summary>
+            <div class="text-caption text-muted" style="margin-top: var(--space-2); line-height: 1.75">
+              <p style="margin: 0 0 var(--space-2)">
+                ❗ <b>꼭 PC(컴퓨터)에서</b> 하세요. 핸드폰 구글 캘린더 <b>앱에는 이 메뉴가 없어요.</b>
+              </p>
+              <ol style="margin: 0; padding-left: 1.2em">
+                <li>크롬 등 브라우저에서 <b>calendar.google.com</b> 접속 (본인 구글 계정 로그인)</li>
+                <li>화면 <b>왼쪽 아래</b> <b>"내 캘린더"</b> 목록에서, 약속이 들어있는 <b>본인 캘린더</b>(보통 본인 이름)에 마우스를 올리면 오른쪽에 <b>⋮</b>(점 세 개)가 떠요 → 클릭 → <b>"설정 및 공유"</b></li>
+                <li>설정 페이지에서 스크롤(또는 왼쪽 메뉴)로 맨 아래 <b>"캘린더 통합"</b> 으로 이동</li>
+                <li>
+                  거기 <b>"비공개 주소(iCal 형식)"</b> 칸의 주소를 복사. (바로 위 <b>"공개 주소"가 아니라 "비공개 주소"</b> 예요 ❗)<br>
+                  주소는 <b>…/private-…/basic.ics</b> 처럼 <b>.ics 로 끝나요.</b> 옆 복사 아이콘을 누르거나 주소 전체를 드래그해 복사.
+                </li>
+                <li>그 주소를 <b>위 칸에 붙여넣고 [연결]</b></li>
+              </ol>
+              <p style="margin: var(--space-3) 0 0">
+                💡 캘린더를 여러 개 쓰면 <b>약속이 든 그 캘린더</b>의 비공개 주소를 쓰세요. (캘린더마다 주소가 따로예요)
+              </p>
+              <p style="color: var(--color-danger, #E12337); margin: var(--space-2) 0 0">
+                ⚠️ "비공개 주소"는 본인 캘린더를 읽을 수 있는 <b>비밀 주소</b>예요. 남에게 공유 금지.
+                (앱은 본인만 보관 — 운영팀도 못 봄.) 새어나갔으면 구글의 같은 화면에서 <b>"비공개 주소 재설정"</b> 후 새 주소로 다시 연결하세요.
+              </p>
+              <p style="margin: var(--space-2) 0 0">
+                🔒 안심하세요: 우리는 약속의 <b>시간만</b> 가져오고, <b>제목·내용은 가져오지도 저장하지도 않아요.</b>
+              </p>
+            </div>
           </details>
         </div>
       </div>
@@ -172,10 +188,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260622b"></script>
-  <script src="js/auth.js?v=20260622b"></script>
-  <script src="js/util.js?v=20260622b"></script>
-  <script src="js/mentor.js?v=20260622b"></script>
-  <script src="js/materials.js?v=20260622b"></script>
+  <script src="js/config.js?v=20260622c"></script>
+  <script src="js/auth.js?v=20260622c"></script>
+  <script src="js/util.js?v=20260622c"></script>
+  <script src="js/mentor.js?v=20260622c"></script>
+  <script src="js/materials.js?v=20260622c"></script>
 </body>
 </html>
