@@ -18,8 +18,14 @@ const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SYNC_SECRET = Deno.env.get("SYNC_SECRET") ?? "";
 
+// 브라우저(멘토 화면)가 직접 호출하므로 CORS 허용 필요
+const CORS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-sync-secret, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 const json = (o: unknown, status = 200) =>
-  new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json" } });
+  new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", ...CORS } });
 
 // ---- service_role REST 헬퍼 ----
 async function rest(path: string): Promise<any[]> {
@@ -238,6 +244,8 @@ async function userIdFromToken(authHeader: string): Promise<string | null> {
 }
 
 Deno.serve(async (req) => {
+  // CORS 사전요청(preflight)
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
     const secret = req.headers.get("x-sync-secret");
     const auth = req.headers.get("Authorization") || "";
