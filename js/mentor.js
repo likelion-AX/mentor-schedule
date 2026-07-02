@@ -264,7 +264,6 @@ async function refreshAll() {
 
   renderCalendar(sessionList, myProgramIds, myBlocks);
   renderMyAssignments(myAssign, sessionsByProgram);
-  renderMyBlocks();
 
   if (IS_MOBILE) showDayDetail(todayISO()); // 폰: 기본으로 오늘 일정 표시
 }
@@ -358,44 +357,6 @@ function renderMyAssignments(myAssign, sessionsByProgram) {
       const sess = sessionsByProgram[b.dataset.ics] || [];
       if (sess.length === 1) Util.downloadIcs(sess[0]);
       else if (sess.length) Util.downloadIcsProgram(sess);
-    }));
-}
-
-/** 개인 일정 등록 탭: 다가오는 내 개인 일정 목록(삭제 가능). 구글 가져온 건 읽기 전용. */
-function renderMyBlocks() {
-  const wrap = document.getElementById("myBlockList");
-  if (!wrap) return;
-  const today = todayISO();
-  const blocks = view.blocks
-    .filter((b) => b.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
-  if (!blocks.length) {
-    wrap.innerHTML = `<p class="text-caption text-muted">다가오는 개인 일정이 없어요.</p>`;
-    return;
-  }
-  wrap.innerHTML = blocks
-    .map((b) => {
-      const isG = b.source === "google";
-      return `<div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
-        <div class="row-between">
-          <strong class="text-sm">${Util.fmtDate(b.date)} <span class="text-caption text-muted" style="font-weight: var(--font-weight-regular)">${Util.hhmm(b.start_time)}–${Util.hhmm(b.end_time)}</span></strong>
-          ${isG
-            ? `<span class="text-caption text-muted">🔗 구글</span>`
-            : `<button class="btn btn-ghost btn-sm" data-delblock="${b.id}" style="color:var(--color-info-negative)">삭제</button>`}
-        </div>
-        ${isG
-          ? `<div class="text-caption text-muted">구글에서 가져온 일정 (수정·삭제는 구글에서)</div>`
-          : (b.memo ? `<div class="text-caption text-muted">${Util.escapeHtml(b.memo)}</div>` : "")}
-      </div>`;
-    })
-    .join("");
-  wrap.querySelectorAll("[data-delblock]").forEach((btn) =>
-    btn.addEventListener("click", async () => {
-      if (!confirm("개인 일정을 삭제할까요?")) return;
-      const { error } = await window.sb.from("mentor_blocks").delete().eq("id", btn.dataset.delblock);
-      if (error) return Util.toast("삭제 실패: " + error.message);
-      Util.toast("삭제했습니다.");
-      refreshAll();
     }));
 }
 
