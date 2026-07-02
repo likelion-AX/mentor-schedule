@@ -321,9 +321,9 @@ function renderMyAssignments(myAssign, sessionsByProgram) {
       const canRespond = a.status === "제안";
       const typeLabel = a.staff_type === "facilitator" ? "퍼실리테이터" : "멘토";
       const calBtns = sess.length === 1
-        ? `<a class="btn btn-secondary btn-sm" href="${Util.gcalUrl(rep)}" target="_blank" rel="noopener">📅 구글 캘린더</a>
+        ? `<a class="btn btn-ghost btn-sm" href="${Util.gcalUrl(rep)}" target="_blank" rel="noopener">📅 구글</a>
            <button class="btn btn-ghost btn-sm" data-ics="${a.program_id}">⬇ .ics</button>`
-        : `<button class="btn btn-secondary btn-sm" data-ics="${a.program_id}">⬇ .ics 전체회차(${sess.length})</button>`;
+        : `<button class="btn btn-ghost btn-sm" data-ics="${a.program_id}">⬇ .ics (${sess.length}회)</button>`;
       return `
         <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
           <div class="row-between">
@@ -340,7 +340,11 @@ function renderMyAssignments(myAssign, sessionsByProgram) {
                  </div>`
               : ""
           }
-          <div class="row mt-4" style="gap: var(--space-2)">${calBtns}</div>
+          ${a.status !== "거절"
+            ? `<div class="row mt-4" style="gap: var(--space-1); align-items:center">
+                 <span class="text-caption text-muted" style="margin-right: 2px">캘린더 추가</span>${calBtns}
+               </div>`
+            : ""}
         </div>`;
     })
     .join("");
