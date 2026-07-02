@@ -22,6 +22,7 @@ const Materials = (() => {
     document.getElementById("materialForm")?.addEventListener("submit", onUpload);
     document.getElementById("mProgram")?.addEventListener("change", populateWeeks);
     document.getElementById("mKind")?.addEventListener("change", toggleKind);
+    toggleKind(); // 브라우저가 select 값을 복원해도 파일/링크 칸이 어긋나지 않게 초기 동기화
     await loadPrograms();
     await refresh();
   }
@@ -197,7 +198,8 @@ const Materials = (() => {
     if (kind === "link") {
       link_url = document.getElementById("mLink").value.trim();
       if (!link_url) return Util.toast("링크(URL)를 입력하세요.");
-      if (!/^https?:\/\//i.test(link_url)) return Util.toast("http:// 또는 https:// 로 시작하는 링크를 넣으세요.");
+      // http(s):// 없이 붙여넣어도 되게 자동 보정 (예: drive.google.com/… → https://drive.google.com/…)
+      if (!/^https?:\/\//i.test(link_url)) link_url = "https://" + link_url.replace(/^\/+/, "");
     } else {
       file = document.getElementById("mFile").files[0];
       if (!file) return Util.toast("파일을 선택하세요.");

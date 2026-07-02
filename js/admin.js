@@ -683,7 +683,8 @@ async function saveMaterial(e) {
   if (kind === "link") {
     link_url = document.getElementById("amLink").value.trim();
     if (!link_url) return Util.toast("링크(URL)를 입력하세요.");
-    if (!/^https?:\/\//i.test(link_url)) return Util.toast("http:// 또는 https:// 로 시작하는 링크를 넣으세요.");
+    // http(s):// 없이 붙여넣어도 되게 자동 보정
+    if (!/^https?:\/\//i.test(link_url)) link_url = "https://" + link_url.replace(/^\/+/, "");
   } else {
     file = document.getElementById("amFile").files[0];
     if (!file) return Util.toast("파일을 선택하세요.");
