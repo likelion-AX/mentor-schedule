@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260702w" />
-  <link rel="stylesheet" href="css/app.css?v=20260702w" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260702x" />
+  <link rel="stylesheet" href="css/app.css?v=20260702x" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -147,7 +147,10 @@
     <!-- ===== 탭: 교육자료 (교육별 → 회차별로 모아 보기) ===== -->
     <section class="tab-panel" data-panel="materials" hidden>
       <div class="card">
-        <div class="card-title" style="margin:0 0 var(--space-2)">교육자료</div>
+        <div class="row-between" style="margin:0 0 var(--space-2)">
+          <div class="card-title" style="margin:0">교육자료</div>
+          <button class="btn btn-secondary btn-sm" id="hubImportOpenBtn" type="button">🔗 허브에서 가져오기</button>
+        </div>
         <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
           아래에서 교육을 골라 자료를 봅니다. <b>여러 개 선택</b>하면 여러 교육의 자료를 한 번에 볼 수 있어요. 멘토가 ‘내 교육자료’에서 올린 자료도 함께 보입니다.
         </p>
@@ -431,6 +434,30 @@
     </div>
   </div>
 
+  <!-- 허브에서 교육자료 가져오기 모달 -->
+  <div class="modal-backdrop hidden" id="hubImportModal">
+    <div class="modal">
+      <div class="modal-title">🔗 허브에서 교육자료 가져오기</div>
+      <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+        광화문 라이언즈 <b>강의자료 허브</b>의 주차별 <b>링크</b>를 이 앱의 교육 자료로 가져옵니다.
+        주차 → 회차로 넣고, 이미 있는 링크는 건너뜁니다. (텍스트 파일은 제외)
+      </p>
+      <div class="field">
+        <label for="hubCohort">가져올 기수 (허브)</label>
+        <select class="select" id="hubCohort"></select>
+      </div>
+      <div class="field">
+        <label for="hubProgram">넣을 교육 (이 앱)</label>
+        <select class="select" id="hubProgram"></select>
+      </div>
+      <p class="text-caption" id="hubPreview" style="min-height: 18px"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="hubCancelBtn">취소</button>
+        <button type="button" class="btn btn-primary" id="hubImportBtn">가져오기</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 자리 합치기 / 중복 정리 모달 -->
   <div class="modal-backdrop hidden" id="mergeModal">
     <div class="modal">
@@ -457,9 +484,13 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260702w"></script>
-  <script src="js/auth.js?v=20260702w"></script>
-  <script src="js/util.js?v=20260702w"></script>
-  <script src="js/admin.js?v=20260702w"></script>
+  <!-- 허브(광화문 라이언즈 강의자료) 연동용 Firebase — 교육자료 가져오기에서만 사용 -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="js/config.js?v=20260702x"></script>
+  <script src="js/auth.js?v=20260702x"></script>
+  <script src="js/util.js?v=20260702x"></script>
+  <script src="js/admin.js?v=20260702x"></script>
 </body>
 </html>

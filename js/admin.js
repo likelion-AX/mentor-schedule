@@ -133,6 +133,15 @@ async function init() {
     if (dd && !dd.contains(e.target)) document.getElementById("matDdPanel")?.classList.add("hidden");
   });
 
+  // 교육자료 탭: 허브(광화문 라이언즈 강의자료)에서 가져오기
+  document.getElementById("hubImportOpenBtn")?.addEventListener("click", openHubImportModal);
+  document.getElementById("hubCancelBtn")?.addEventListener("click", closeHubImportModal);
+  document.getElementById("hubCohort")?.addEventListener("change", previewHubImport);
+  document.getElementById("hubImportBtn")?.addEventListener("click", doHubImport);
+  document.getElementById("hubImportModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "hubImportModal") closeHubImportModal();
+  });
+
   // 목록 검색 + 페이지
   bindSearch("programSearch", "program", renderProgramList);
   document.getElementById("programStatus")?.addEventListener("change", (e) => {
@@ -674,6 +683,132 @@ function wireMaterialButtons(root) {
     b.addEventListener("click", () => deleteMaterial(b.dataset.matDel)));
   root.querySelectorAll("[data-add-mat]").forEach((b) =>
     b.addEventListener("click", () => openMaterialModal(state.programById[b.dataset.addMat])));
+}
+
+// ---------- 허브(광화문 라이언즈 강의자료)에서 가져오기 ----------
+// 허브는 Firebase RTDB(voting-a59b9)에 cohorts/<기수>/lessons/<주차>/<키>={url,label} 구조.
+// 익명 로그인으로 읽어(허브 페이지와 동일) 선택한 교육의 회차별 '링크 자료'로 삽입.
+const HUB_FB_CONFIG = {
+  apiKey: "AIzaSyBEP4fTbB1q7dn8SHeDP74kM2tF-S6yssI",
+  authDomain: "voting-a59b9.firebaseapp.com",
+  databaseURL: "https://voting-a59b9-default-rtdb.firebaseio.com",
+  projectId: "voting-a59b9",
+  storageBucket: "voting-a59b9.firebasestorage.app",
+  messagingSenderId: "748292187430",
+  appId: "1:748292187430:web:fd0a4cd243d6378f288de7",
+};
+let hubFbReady = null;      // Firebase 초기화+익명로그인 Promise(1회)
+let hubLessonsCache = null; // 미리보기에서 읽어둔 선택 기수의 lessons
+
+function initHubFirebase() {
+  if (hubFbReady) return hubFbReady;
+  hubFbReady = (async () => {
+    if (!window.firebase) throw new Error("허브 연결 모듈(Firebase)이 로드되지 않았어요.");
+    if (!firebase.apps.length) firebase.initializeApp(HUB_FB_CONFIG);
+    await firebase.auth().signInAnonymously();
+    return firebase.database();
+  })().catch((e) => { hubFbReady = null; throw e; }); // 실패 시 캐시 비워 재시도 가능
+  return hubFbReady;
+}
+
+async function openHubImportModal() {
+  const modal = document.getElementById("hubImportModal");
+  const cohortSel = document.getElementById("hubCohort");
+  const progSel = document.getElementById("hubProgram");
+  const preview = document.getElementById("hubPreview");
+  hubLessonsCache = null;
+  modal.classList.remove("hidden");
+  // 넣을 교육(이 앱) 목록
+  progSel.innerHTML = state.programs.length
+    ? state.programs.map((p) => `<option value="${p.id}">${Util.escapeHtml(p.client || p.title || "제목 없음")}</option>`).join("")
+    : `<option value="">교육이 없습니다</option>`;
+  preview.textContent = "허브에 연결 중…";
+  try {
+    const db = await initHubFirebase();
+    const [cohortsSnap, activeSnap] = await Promise.all([
+      db.ref("cohorts").once("value"),
+      db.ref("activeCohort").once("value"),
+    ]);
+    const cohorts = cohortsSnap.val() || {};
+    const active = activeSnap.val();
+    const ids = Object.keys(cohorts);
+    if (!ids.length) { cohortSel.innerHTML = ""; preview.textContent = "허브에 기수가 없습니다."; return; }
+    cohortSel.innerHTML = ids
+      .map((id) => `<option value="${id}" ${id === active ? "selected" : ""}>${Util.escapeHtml(cohorts[id]?.info?.name || id)}</option>`)
+      .join("");
+    previewHubImport();
+  } catch (e) {
+    preview.textContent = "허브 연결 실패: " + (e.message || e);
+  }
+}
+function closeHubImportModal() {
+  document.getElementById("hubImportModal").classList.add("hidden");
+  hubLessonsCache = null;
+}
+
+async function previewHubImport() {
+  const preview = document.getElementById("hubPreview");
+  const id = document.getElementById("hubCohort").value;
+  if (!id) return;
+  preview.textContent = "불러오는 중…";
+  try {
+    const db = await initHubFirebase();
+    const snap = await db.ref("cohorts/" + id + "/lessons").once("value");
+    const lessons = snap.val() || {};
+    hubLessonsCache = lessons;
+    const weeks = Object.keys(lessons).sort((a, b) => a.localeCompare(b));
+    let total = 0;
+    const parts = weeks.map((w) => {
+      const cnt = Object.values(lessons[w] || {}).filter((v) => v && v.url && v.hub !== false).length;
+      total += cnt;
+      return `${w}주차 ${cnt}개`;
+    });
+    preview.innerHTML = total
+      ? `가져올 링크 <b>${total}개</b> (${parts.join(", ")}) — 주차 → 회차로 넣습니다. 이미 있는 링크는 건너뜁니다.`
+      : "이 기수에는 가져올 링크가 없습니다.";
+  } catch (e) {
+    preview.textContent = "미리보기 실패: " + (e.message || e);
+  }
+}
+
+async function doHubImport() {
+  const pid = document.getElementById("hubProgram").value;
+  if (!pid) return Util.toast("넣을 교육을 선택하세요.");
+  if (!hubLessonsCache) return Util.toast("먼저 기수를 선택하세요.");
+  const lessons = hubLessonsCache;
+  // 이미 있는 링크(같은 교육+회차+URL)는 건너뛰기
+  const existing = new Set(
+    state.materials.filter((m) => m.program_id === pid && m.link_url).map((m) => `${m.week_no || 0}|${m.link_url}`));
+  const seen = new Set();
+  const rows = [];
+  Object.keys(lessons).forEach((w) => {
+    const week = parseInt(w, 10) || null;
+    Object.values(lessons[w] || {}).forEach((it) => {
+      if (!it || !it.url || it.hub === false) return;
+      const key = `${week || 0}|${it.url}`;
+      if (existing.has(key) || seen.has(key)) return;
+      seen.add(key);
+      rows.push({
+        owner_id: me.id, program_id: pid, week_no: week,
+        title: (it.label && it.label.trim()) || it.url,
+        link_url: it.url, file_path: null, file_name: "", file_type: "", file_size: 0,
+        description: "허브에서 가져옴",
+      });
+    });
+  });
+  if (!rows.length) return Util.toast("새로 가져올 링크가 없습니다(이미 다 있음).");
+
+  const btn = document.getElementById("hubImportBtn");
+  btn.disabled = true; btn.textContent = "가져오는 중…";
+  const { error } = await window.sb.from("materials").insert(rows);
+  btn.disabled = false; btn.textContent = "가져오기";
+  if (error) return Util.toast("가져오기 실패: " + error.message);
+  Util.toast(`${rows.length}개 링크를 가져왔습니다.`);
+  closeHubImportModal();
+  // 가져온 교육을 선택 상태로 반영해 바로 보이게
+  state.selectedMatProgramIds = state.selectedMatProgramIds || [];
+  if (!state.selectedMatProgramIds.includes(pid)) state.selectedMatProgramIds.push(pid);
+  loadAll();
 }
 
 async function downloadMaterial(id) {
