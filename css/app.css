@@ -263,7 +263,11 @@ a:hover { text-decoration: underline; }
 /* 교육 목록: 행 밀도 높이기(패딩·칩 축소). class="table compact" 에만 적용 */
 .table.compact th, .table.compact td { padding: var(--space-2) var(--space-3); vertical-align: top; }
 .table.compact .mentor-chip { height: 18px; padding: 0 7px; }
-.table.compact .mentor-chips { gap: 3px; margin-top: 2px; }
+/* 칩을 inline으로 → '멘토/퍼실' 라벨·칩·(개수)가 각각 한 줄로 모임(줄 쪼개짐 방지) */
+.table.compact .mentor-chips { display: inline-flex; vertical-align: middle; gap: 3px; }
+/* 행 높이 일정하게 — 멘토/퍼실 수·완료 줄 유무와 무관하게 같은 높이로 정렬 */
+.table.compact tbody tr { height: 66px; }
+.table.compact tbody td { vertical-align: middle; }
 
 /* ---------- Grid ---------- */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
@@ -579,6 +583,28 @@ a:hover { text-decoration: underline; }
 .run-note { height: 30px; }
 @media (max-width: 700px) { .run-row { grid-template-columns: 1fr; } }
 
+/* 배정 보드: 사람 목록(컴팩트 1줄) — 이름 + 상태배지 + 버튼 */
+.board-people { display: flex; flex-direction: column; }
+.board-person {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-weak);
+}
+.board-person:last-child { border-bottom: none; }
+.board-person.bp-dim { opacity: 0.5; }
+.bp-top { display: flex; align-items: center; gap: var(--space-2); }
+.bp-name {
+  flex: 1 1 auto; min-width: 0;                          /* 이름이 길면 … 로 줄이고 버튼은 우측 유지 */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-weight: var(--font-weight-semibold); color: var(--color-fg-normal);
+  cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px;
+}
+.bp-tags { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.bp-tags:empty { display: none; }
+.bp-actions { display: flex; align-items: center; gap: var(--space-1); flex-shrink: 0; }
+
+/* 명단 표 이메일: 너무 길면 … 로 (줄바꿈으로 다른 칸 밀지 않게). 전체는 hover 툴팁 */
+.roster-email { display: inline-block; max-width: 340px; vertical-align: bottom; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* 러닝타임 pill */
 .runtime { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; font-weight: var(--font-weight-semibold); color: var(--color-fg-neutral); }
 
@@ -596,3 +622,68 @@ a:hover { text-decoration: underline; }
 
 /* 모달 넓게(반복 옵션 들어가서) */
 .modal.modal-lg { max-width: 560px; }
+
+/* ---------- Tabs (밑줄형: 페이지 상단 대분류) ---------- */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-border-weak);
+  margin-bottom: var(--space-5);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab-btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: var(--space-3) var(--space-4);
+  font-family: inherit;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-assistive);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.tab-btn:hover { color: var(--color-fg-normal); }
+.tab-btn[aria-selected="true"] {
+  color: var(--color-fg-primary);
+  border-bottom-color: var(--color-border-primary);
+}
+.tab-btn .tab-count {
+  font-size: var(--font-size-label);
+  font-weight: var(--font-weight-semibold);
+  opacity: 0.7;
+}
+
+/* 탭 패널 — 숨김 처리 */
+.tab-panel[hidden] { display: none; }
+
+/* ---------- Tabs (알약형: 교육자료 등 하위 선택) ---------- */
+.tabs-pills {
+  border-bottom: none;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.tabs-pills .tab-btn {
+  border: 1px solid var(--color-border-normal);
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: 0;
+  font-size: var(--font-size-label);
+  color: var(--color-fg-normal);
+}
+.tabs-pills .tab-btn:hover { background: var(--color-bg-normal); }
+.tabs-pills .tab-btn[aria-selected="true"] {
+  background: var(--color-bg-primary);
+  border-color: var(--color-border-primary);
+  color: var(--color-fg-white);
+}
+.tabs-pills .tab-btn[aria-selected="true"] .tab-count { opacity: 0.85; }
+@media (max-width: 700px) {
+  .tab-btn { padding: var(--space-3) var(--space-3); font-size: var(--font-size-label); }
+}

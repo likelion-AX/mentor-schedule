@@ -188,6 +188,40 @@ const Util = {
     const s0 = sessions[0] || {};
     this._download(this.icsTextMulti(sessions), `${s0.client || s0.title || "교육"}_전체일정.ics`);
   },
+
+  // ===================== 탭 컨트롤러 (선언형, 프레임워크 불필요) =====================
+  /**
+   * 밑줄형 탭 전환기.
+   *   - 탭 바: <div class="tabs">…<button class="tab-btn" data-tab="키" [aria-selected]>…</button>
+   *   - 패널: 같은 부모 안의 <section class="tab-panel" data-panel="키" [hidden]>
+   * opts: { list(선택자|Element), onShow(key), storageKey(선택: 마지막 탭 기억) }
+   * 반환: { show(key) } — 코드에서 프로그램적으로 탭 전환 가능.
+   */
+  initTabs(opts) {
+    const bar = typeof opts.list === "string" ? document.querySelector(opts.list) : opts.list;
+    if (!bar) return { show() {} };
+    const scope = bar.parentElement; // 패널은 탭 바와 형제
+    const btns = [...bar.querySelectorAll(".tab-btn")];
+    const panels = [...scope.querySelectorAll(".tab-panel")];
+    const show = (key) => {
+      btns.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === key)));
+      panels.forEach((p) => { p.hidden = p.dataset.panel !== key; });
+      if (opts.storageKey) { try { localStorage.setItem(opts.storageKey, key); } catch (_) {} }
+      if (opts.onShow) opts.onShow(key);
+    };
+    bar.addEventListener("click", (e) => {
+      const b = e.target.closest(".tab-btn");
+      if (b && b.dataset.tab) show(b.dataset.tab);
+    });
+    let initial = null;
+    if (opts.storageKey) { try { initial = localStorage.getItem(opts.storageKey); } catch (_) {} }
+    if (!initial || !btns.some((b) => b.dataset.tab === initial)) {
+      const sel = btns.find((b) => b.getAttribute("aria-selected") === "true") || btns[0];
+      initial = sel ? sel.dataset.tab : null;
+    }
+    if (initial) show(initial);
+    return { show };
+  },
 };
 
 window.Util = Util;

@@ -14,6 +14,7 @@ const Materials = (() => {
   let me = null;
   let myPrograms = []; // [{ id, label, sessions:[{date,start,end}] }]
   let list = [];
+  let activeTab = "__all__"; // 교육별 탭에서 보고 있는 교육(program_id) / "__all__" / "__none__"
 
   async function init() {
     me = await Auth.getProfile();
@@ -103,6 +104,31 @@ const Materials = (() => {
     return kb < 1024 ? `${Math.round(kb)} KB` : `${(kb / 1024).toFixed(1)} MB`;
   }
 
+  /** 자료 1건 → 카드 HTML */
+  function cardHtml(m) {
+    const prog = m.program_id ? programLabel(m.program_id) + weekLabel(m) : "";
+    const isLink = !!m.link_url;
+    return `
+      <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
+        <div class="row-between">
+          <strong class="text-sm">${Util.escapeHtml(m.title || m.file_name || "제목 없음")}</strong>
+          <span class="text-caption text-muted">${isLink ? "🔗 링크" : fmtSize(m.file_size)}</span>
+        </div>
+        ${prog ? `<div class="text-caption" style="color:var(--color-fg-assistive)">📚 ${Util.escapeHtml(prog)}</div>` : ""}
+        ${m.description ? `<div class="text-caption text-muted">${Util.escapeHtml(m.description)}</div>` : ""}
+        ${isLink
+          ? `<div class="text-caption text-muted" style="word-break:break-all">🔗 ${Util.escapeHtml(m.link_url)}</div>`
+          : (m.file_name ? `<div class="text-caption text-muted">📄 ${Util.escapeHtml(m.file_name)}</div>` : "")}
+        <div class="row mt-4" style="gap: var(--space-2)">
+          ${isLink
+            ? `<button class="btn btn-secondary btn-sm" data-open="${m.id}">🔗 열기</button>`
+            : `<button class="btn btn-secondary btn-sm" data-dl="${m.id}">⬇ 다운로드</button>`}
+          <button class="btn btn-ghost btn-sm" data-edit="${m.id}">수정</button>
+          <button class="btn btn-ghost btn-sm" data-del="${m.id}" style="color:var(--color-info-negative)">삭제</button>
+        </div>
+      </div>`;
+  }
+
   function render() {
     const wrap = document.getElementById("materialList");
     if (!wrap) return;
@@ -110,39 +136,50 @@ const Materials = (() => {
       wrap.innerHTML = `<p class="text-caption text-muted">아직 올린 자료가 없습니다.</p>`;
       return;
     }
-    wrap.innerHTML = list
-      .map((m) => {
-        const prog = m.program_id ? programLabel(m.program_id) + weekLabel(m) : "";
-        const isLink = !!m.link_url;
-        return `
-        <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
-          <div class="row-between">
-            <strong class="text-sm">${Util.escapeHtml(m.title || m.file_name || "제목 없음")}</strong>
-            <span class="text-caption text-muted">${isLink ? "🔗 링크" : fmtSize(m.file_size)}</span>
-          </div>
-          ${prog ? `<div class="text-caption" style="color:var(--color-fg-assistive)">📚 ${Util.escapeHtml(prog)}</div>` : ""}
-          ${m.description ? `<div class="text-caption text-muted">${Util.escapeHtml(m.description)}</div>` : ""}
-          ${isLink
-            ? `<div class="text-caption text-muted" style="word-break:break-all">🔗 ${Util.escapeHtml(m.link_url)}</div>`
-            : (m.file_name ? `<div class="text-caption text-muted">📄 ${Util.escapeHtml(m.file_name)}</div>` : "")}
-          <div class="row mt-4" style="gap: var(--space-2)">
-            ${isLink
-              ? `<button class="btn btn-secondary btn-sm" data-open="${m.id}">🔗 열기</button>`
-              : `<button class="btn btn-secondary btn-sm" data-dl="${m.id}">⬇ 다운로드</button>`}
-            <button class="btn btn-ghost btn-sm" data-edit="${m.id}">수정</button>
-            <button class="btn btn-ghost btn-sm" data-del="${m.id}" style="color:var(--color-info-negative)">삭제</button>
-          </div>
-        </div>`;
-      })
-      .join("");
 
-    wrap.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => download(b.dataset.dl)));
-    wrap.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => {
+    // 교육(program)별로 묶기 — 연결 안 한 자료는 '교육 미연결'로
+    const groups = new Map(); // key -> { key, label, items }
+    list.forEach((m) => {
+      const key = m.program_id || "__none__";
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          label: m.program_id ? (programLabel(m.program_id) || "기타 교육") : "교육 미연결",
+          items: [],
+        });
+      }
+      groups.get(key).items.push(m);
+    });
+    const groupArr = [...groups.values()];
+
+    // 현재 탭이 사라졌으면 '전체'로 복귀
+    if (activeTab !== "__all__" && !groups.has(activeTab)) activeTab = "__all__";
+
+    // 교육이 1개뿐이면 탭을 굳이 안 보여줌(전체만)
+    const showTabs = groupArr.length > 1;
+    const tabsHtml = showTabs
+      ? `<div class="tabs tabs-pills" role="tablist">
+          <button class="tab-btn" role="tab" data-mtab="__all__" aria-selected="${activeTab === "__all__"}">전체 <span class="tab-count">${list.length}</span></button>
+          ${groupArr.map((g) => `<button class="tab-btn" role="tab" data-mtab="${g.key}" aria-selected="${activeTab === g.key}">${Util.escapeHtml(g.label)} <span class="tab-count">${g.items.length}</span></button>`).join("")}
+        </div>`
+      : "";
+
+    const shown = activeTab === "__all__" ? list : (groups.get(activeTab)?.items || []);
+    wrap.innerHTML = tabsHtml + `<div class="stack" id="matCards">${shown.map(cardHtml).join("")}</div>`;
+
+    // 탭 클릭 → 필터 후 다시 렌더
+    wrap.querySelectorAll("[data-mtab]").forEach((b) =>
+      b.addEventListener("click", () => { activeTab = b.dataset.mtab; render(); }));
+
+    // 카드 버튼 이벤트(현재 탭에 보이는 카드에만)
+    const cards = wrap.querySelector("#matCards");
+    cards.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => download(b.dataset.dl)));
+    cards.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => {
       const m = list.find((x) => x.id === b.dataset.open);
       if (m?.link_url) window.open(m.link_url, "_blank", "noopener");
     }));
-    wrap.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => editMeta(b.dataset.edit)));
-    wrap.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => remove(b.dataset.del)));
+    cards.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => editMeta(b.dataset.edit)));
+    cards.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => remove(b.dataset.del)));
   }
 
   async function onUpload(e) {

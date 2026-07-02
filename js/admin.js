@@ -7,6 +7,7 @@
 
 let me;
 let calendar;
+let adminTabs;         // 상단 4탭 컨트롤러(Util.initTabs 반환) — 코드에서 탭 전환용
 let state = {
   sessions: [],
   programs: [],        // 교육 단위로 묶은 목록
@@ -18,6 +19,7 @@ let state = {
   assignments: [],     // {id, program_id, person_email, staff_type, status}
   materials: [],       // {id, program_id, week_no, owner_id, title, file_path, ...}
   selectedProgramId: null,
+  selectedMatProgramId: null, // 교육자료 탭에서 보고 있는 교육
 };
 const TYPE_LABEL = { mentor: "멘토", facilitator: "퍼실리테이터" };
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "p-" + Date.now() + "-" + Math.floor(Math.random() * 1e9));
@@ -107,12 +109,29 @@ async function init() {
     if (e.target.id === "materialModal") closeMaterialModal();
   });
 
+  // 교육자료 탭: 교육 검색(입력할 때마다 후보 재계산)
+  document.getElementById("matSearch")?.addEventListener("input", renderMaterialsTab);
+
   // 목록 검색 + 페이지
   bindSearch("programSearch", "program", renderProgramList);
+  document.getElementById("programStatus")?.addEventListener("change", (e) => {
+    listUI.program.status = e.target.value; listUI.program.page = 1; renderProgramList();
+  });
   bindSearch("mentorSearch", "mentor", () => renderRosterTable("mentorRosterList", "mentorPager", "mentor"));
   bindSearch("facSearch", "facilitator", () => renderRosterTable("facRosterList", "facPager", "facilitator"));
 
   setupCalendar();
+
+  // 상단 4탭: 일정&배정 / 교육목록 / 명단 / 교육자료
+  adminTabs = Util.initTabs({
+    list: "#adminTabs",
+    storageKey: "adminTab",
+    onShow: (key) => {
+      // 캘린더는 숨겨진 패널에서 그려지면 크기가 0이 되므로, 보일 때 크기 재계산
+      if (key === "schedule" && calendar) calendar.updateSize();
+    },
+  });
+
   await loadAll();
 }
 
@@ -155,6 +174,7 @@ async function loadAll() {
   fillProgramDatalist();
   if (state.selectedProgramId && !state.programById[state.selectedProgramId]) state.selectedProgramId = null;
   renderBoard();
+  renderMaterialsTab();
 
   // URL로 바로 호출: admin.html?img=교육명
   if (!urlImgHandled) {
@@ -334,13 +354,13 @@ function chipsHtml(programId, type) {
 
 function programDatesLabel(p) {
   if (p.sessions.length === 1) return Util.fmtDate(p.firstDate);
-  return `${p.sessions.length}회 · ${Util.fmtDate(p.firstDate)} ~ ${Util.fmtDate(p.lastDate)}`;
+  return `${Util.fmtDate(p.firstDate)} ~ ${Util.fmtDate(p.lastDate)}`;
 }
 
 // ---------- 목록 검색 + 페이지네이션 (교육 / 멘토 / 퍼실) ----------
 const PAGE_SIZE = 12;
 const listUI = {
-  program: { q: "", page: 1 },
+  program: { q: "", page: 1, status: "" },
   mentor: { q: "", page: 1 },
   facilitator: { q: "", page: 1 },
 };
@@ -371,14 +391,16 @@ function renderProgramList() {
   const tbody = document.getElementById("sessionList");
   const ui = listUI.program;
   const q = ui.q.trim().toLowerCase();
+  const status = ui.status || "";
   const filtered = state.programs.filter((p) =>
-    !q || (p.client || "").toLowerCase().includes(q) || (p.title || "").toLowerCase().includes(q));
+    (!q || (p.client || "").toLowerCase().includes(q) || (p.title || "").toLowerCase().includes(q)) &&
+    (!status || p.status === status));
   if (!state.programs.length) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-caption text-muted">교육이 없습니다. “+ 새 교육”으로 추가하세요.</td></tr>`;
     return renderPager("programPager", 0, 1, () => {});
   }
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-caption text-muted">‘${Util.escapeHtml(ui.q)}’ 검색 결과가 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-caption text-muted">조건에 맞는 교육이 없습니다.</td></tr>`;
     return renderPager("programPager", 0, 1, () => {});
   }
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -396,7 +418,7 @@ function renderProgramList() {
           <td class="text-sm" style="white-space:nowrap">${programDatesLabel(p)}</td>
           <td>
             <div class="text-sm" style="font-weight: var(--font-weight-bold)">${Util.escapeHtml(p.client || "-")}</div>
-            <div class="text-caption text-muted">${Util.escapeHtml(p.title)}</div>
+            <div class="text-caption text-muted">${Util.escapeHtml(p.title)}${p.sessions.length > 1 ? ` · ${p.sessions.length}회` : ""}</div>
           </td>
           <td class="text-sm" style="white-space:nowrap">${p.timeVaries ? "<span class='text-caption text-muted'>회차별 상이</span>" : Util.hhmm(p.start_time) + "~" + Util.hhmm(p.end_time)}</td>
           <td>${p.timeVaries ? "<span class='text-caption text-muted'>—</span>" : `<span class="runtime">⏱ ${Util.durationLabel(p.start_time, p.end_time)}</span>`}</td>
@@ -423,6 +445,7 @@ function renderProgramList() {
       state.selectedProgramId = tr.dataset.row;
       renderBoard();
       renderProgramList();
+      adminTabs?.show("schedule"); // 배정 보드는 '일정 & 배정' 탭에 있으므로 이동
       document.querySelector(".board-col")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }));
   tbody.querySelectorAll("[data-edit]").forEach((b) =>
@@ -470,8 +493,7 @@ function renderBoard() {
     </div>
     ${boardSection(p, "mentor", p.needed_mentors)}
     ${boardSection(p, "facilitator", p.needed_facilitators)}
-    ${orphanSection(p)}
-    ${materialsSection(p)}`;
+    ${orphanSection(p)}`;
 
   board.querySelectorAll("[data-done]").forEach((cb) =>
     cb.addEventListener("change", () => setSessionDone(cb.dataset.done, cb.checked)));
@@ -487,16 +509,6 @@ function renderBoard() {
     b.addEventListener("click", () => setAssignType(b.dataset.settype, b.dataset.type)));
   board.querySelectorAll("[data-confirm]").forEach((b) =>
     b.addEventListener("click", () => setAssignStatus(b.dataset.confirm, "확정")));
-  board.querySelectorAll("[data-mat-dl]").forEach((b) =>
-    b.addEventListener("click", () => downloadMaterial(b.dataset.matDl)));
-  board.querySelectorAll("[data-mat-open]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const m = state.materials.find((x) => x.id === b.dataset.matOpen);
-      if (m?.link_url) window.open(m.link_url, "_blank", "noopener");
-    }));
-  board.querySelectorAll("[data-mat-del]").forEach((b) =>
-    b.addEventListener("click", () => deleteMaterial(b.dataset.matDel)));
-  document.getElementById("addMaterialBtn")?.addEventListener("click", () => openMaterialModal(p));
 }
 
 // ---------- 교육자료 (운영팀: 선택 교육의 자료를 회차별로 보기·다운로드) ----------
@@ -541,6 +553,77 @@ function materialsSection(program) {
       ${body}
     </div>`;
 }
+
+// ---------- 교육자료 탭 (교육별 알약 선택 → 회차별 자료 모아보기) ----------
+// 교육이 많아지면 알약을 하나하나 찾기 번거로우므로:
+//  · 평소엔 '자료 있는 교육'만 알약으로 표시(자료 많은 순).
+//  · 검색하면 매칭되는 모든 교육(자료 없는 것 포함)을 표시 → 새 자료 올릴 교육 찾기.
+function renderMaterialsTab() {
+  const tabs = document.getElementById("matProgramTabs");
+  const panel = document.getElementById("matPanel");
+  if (!tabs || !panel) return;
+
+  const programs = state.programs;
+  if (!programs.length) {
+    tabs.innerHTML = "";
+    panel.innerHTML = `<p class="text-caption text-muted">아직 교육이 없어요. ‘교육 목록’ 탭에서 교육을 먼저 추가하세요.</p>`;
+    return;
+  }
+
+  const q = (document.getElementById("matSearch")?.value || "").trim().toLowerCase();
+  const matCount = (id) => state.materials.filter((m) => m.program_id === id).length;
+  const labelOf = (p) => p.client || p.title || "제목 없음";
+
+  // 후보 교육 목록 결정
+  let candidates;
+  if (q) {
+    candidates = programs.filter((p) =>
+      (p.client || "").toLowerCase().includes(q) || (p.title || "").toLowerCase().includes(q));
+  } else {
+    const withMat = programs.filter((p) => matCount(p.id) > 0);
+    candidates = withMat.length ? withMat : programs; // 자료 있는 교육이 하나도 없으면 전체 노출
+  }
+  // 자료 많은 순 → 최근 시작일 순
+  candidates = candidates.slice().sort((a, b) =>
+    matCount(b.id) - matCount(a.id) || (b.firstDate || "").localeCompare(a.firstDate || ""));
+
+  if (!candidates.length) {
+    tabs.innerHTML = "";
+    panel.innerHTML = `<p class="text-caption text-muted">‘${Util.escapeHtml(q)}’ 검색 결과가 없습니다.</p>`;
+    return;
+  }
+
+  // 선택 교육: 기존 선택이 후보에 남아 있으면 유지, 아니면 첫 후보(자료 많은 교육)
+  let pid = state.selectedMatProgramId;
+  if (!pid || !candidates.some((p) => p.id === pid)) pid = candidates[0].id;
+  state.selectedMatProgramId = pid;
+
+  tabs.innerHTML = candidates.map((p) => {
+    const n = matCount(p.id);
+    return `<button class="tab-btn" role="tab" data-matprog="${p.id}" aria-selected="${p.id === pid}">${Util.escapeHtml(labelOf(p))}${n ? ` <span class="tab-count">${n}</span>` : ""}</button>`;
+  }).join("");
+  tabs.querySelectorAll("[data-matprog]").forEach((b) =>
+    b.addEventListener("click", () => { state.selectedMatProgramId = b.dataset.matprog; renderMaterialsTab(); }));
+
+  const program = state.programById[pid];
+  panel.innerHTML = materialsSection(program);
+  wireMaterialButtons(panel, program);
+}
+
+// materialsSection이 만든 버튼(다운로드/열기/삭제/추가) 이벤트 연결 — 재사용
+function wireMaterialButtons(root, program) {
+  root.querySelectorAll("[data-mat-dl]").forEach((b) =>
+    b.addEventListener("click", () => downloadMaterial(b.dataset.matDl)));
+  root.querySelectorAll("[data-mat-open]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const m = state.materials.find((x) => x.id === b.dataset.matOpen);
+      if (m?.link_url) window.open(m.link_url, "_blank", "noopener");
+    }));
+  root.querySelectorAll("[data-mat-del]").forEach((b) =>
+    b.addEventListener("click", () => deleteMaterial(b.dataset.matDel)));
+  root.querySelector("#addMaterialBtn")?.addEventListener("click", () => openMaterialModal(program));
+}
+
 async function downloadMaterial(id) {
   const m = state.materials.find((x) => x.id === id);
   if (!m) return;
@@ -744,47 +827,47 @@ function boardSection(program, type, needed) {
   const confirmed = confirmedCount(program.id, type);
   const body = list.length
     ? rows.map((r) => boardRow(type, r)).join("")
-    : `<tr><td colspan="4" class="text-caption text-muted">${TYPE_LABEL[type]} 명단이 비어 있어요. 아래에서 초대하세요.</td></tr>`;
+    : `<p class="text-caption text-muted" style="padding: var(--space-2) 0">${TYPE_LABEL[type]} 명단이 비어 있어요. 아래에서 초대하세요.</p>`;
   return `
-    <div style="margin-bottom: var(--space-3)">
-      <div class="row-between" style="margin-bottom: var(--space-2)">
+    <div style="margin-bottom: var(--space-4)">
+      <div class="row-between" style="margin-bottom: var(--space-1)">
         <strong class="text-sm">${TYPE_LABEL[type]} 배정</strong>
         <span class="badge badge-neutral">확정 ${confirmed} / 필요 ${needed || 0}</span>
       </div>
-      <table class="table">
-        <thead><tr><th>${TYPE_LABEL[type]}</th><th>가용</th><th>상태</th><th></th></tr></thead>
-        <tbody>${body}</tbody>
-      </table>
+      <div class="board-people">${body}</div>
     </div>`;
 }
 
 function boardRow(type, r) {
   const { person, assign, blockConflict, dupProgram, registered } = r;
   const conflict = blockConflict || !!dupProgram;
-  const gray = conflict && !assign ? "color: var(--color-fg-disabled)" : "";
-  let avail;
-  if (!registered) avail = `<span class="badge badge-neutral">미가입</span>`;
-  else if (dupProgram) avail = `<span class="badge badge-status-거절" title="${Util.escapeHtml(dupProgram.client || dupProgram.title)} 시간 겹침">중복배정</span>`;
-  else if (blockConflict) avail = `<span class="badge badge-status-거절">개인일정 충돌</span>`;
-  else avail = `<span class="badge badge-status-확정">가능</span>`;
-  let statusCell = `<span class="text-caption text-muted">—</span>`;
-  let actionCell = `<button class="btn btn-secondary btn-sm" data-assign="${Util.escapeHtml(person.email)}" data-type="${type}">배정</button>`;
+
+  // 가용: 평소 '가능'은 표시 생략(노이즈 감소), 문제 있을 때만 경고 배지
+  let warn = "";
+  if (!registered) warn = `<span class="badge badge-neutral">미가입</span>`;
+  else if (dupProgram) warn = `<span class="badge badge-status-거절" title="${Util.escapeHtml(dupProgram.client || dupProgram.title)} 시간 겹침">중복</span>`;
+  else if (blockConflict) warn = `<span class="badge badge-status-거절">개인일정 충돌</span>`;
+
+  const statusBadge = assign ? `<span class="badge badge-status-${assign.status}">${assign.status}</span>` : "";
+
+  let actionCell;
   if (assign) {
-    statusCell = `<span class="badge badge-status-${assign.status}">${assign.status}</span>`;
     const confirmBtn = assign.status === "수락"
       ? `<button class="btn btn-primary btn-sm" data-confirm="${assign.id}">확정</button>` : "";
-    actionCell = `<div class="row" style="gap: var(--space-1)">${confirmBtn}<button class="btn btn-ghost btn-sm" data-unassign="${assign.id}">해제</button></div>`;
+    actionCell = `${confirmBtn}<button class="btn btn-ghost btn-sm" data-unassign="${assign.id}">해제</button>`;
+  } else {
+    actionCell = `<button class="btn btn-secondary btn-sm" data-assign="${Util.escapeHtml(person.email)}" data-type="${type}">배정</button>`;
   }
+
+  const dimCls = conflict && !assign ? " bp-dim" : "";
   return `
-    <tr>
-      <td style="${gray}">
-        <div class="text-sm" data-board-schedule="${Util.escapeHtml(person.email)}" style="font-weight: var(--font-weight-semibold); cursor:pointer; text-decoration:underline; text-decoration-style:dotted">${Util.escapeHtml(person.name)} 📅</div>
-        <div class="text-caption text-muted">${person.email.endsWith("@pending.local") ? "이메일 미정" : Util.escapeHtml(person.email)}</div>
-      </td>
-      <td>${avail}</td>
-      <td>${statusCell}</td>
-      <td style="text-align:right">${actionCell}</td>
-    </tr>`;
+    <div class="board-person${dimCls}">
+      <div class="bp-top">
+        <span class="bp-name" data-board-schedule="${Util.escapeHtml(person.email)}">${Util.escapeHtml(person.name)} 📅</span>
+        <div class="bp-tags">${warn}${statusBadge}</div>
+        <div class="bp-actions">${actionCell}</div>
+      </div>
+    </div>`;
 }
 
 // 명단 구분과 안 맞거나 명단에서 빠진 사람의 배정 — 보드 일반 칸엔 안 잡혀서 따로 surface해 정리.
@@ -796,7 +879,7 @@ function orphanSection(program) {
   const rows = orphans
     .map((a) => {
       const other = a.staff_type === "facilitator" ? "mentor" : "facilitator";
-      return `<div class="row-between" style="padding:6px 0; border-bottom:1px solid var(--color-border-weak)">
+      return `<div class="row-between" style="padding: var(--space-2) 0; border-bottom:1px solid var(--color-border-weak)">
         <div style="min-width:0">
           <span class="text-sm">${Util.escapeHtml(nameOf(a.person_email))}</span>
           <span class="text-caption text-muted"> · ${TYPE_LABEL[a.staff_type] || a.staff_type}로 배정됨 (명단 구분과 불일치)</span>
@@ -1080,7 +1163,7 @@ function renderRosterTable(tbodyId, pagerId, type) {
       const adminBadge = v.role === "admin" ? ` <span class="badge badge-neutral">운영팀</span>` : "";
       const emailCell = v.email.endsWith("@pending.local")
         ? `<span class="text-caption" style="color:var(--color-fg-assistive)">이메일 미정 (이름으로 연결)</span>`
-        : `<span class="text-caption text-muted">${Util.escapeHtml(v.email)}</span>`;
+        : `<span class="text-caption text-muted roster-email" title="${Util.escapeHtml(v.email)}">${Util.escapeHtml(v.email)}</span>`;
       return `
         <tr>
           <td class="text-sm" style="font-weight: var(--font-weight-semibold)">${Util.escapeHtml(v.name)}${adminBadge}</td>
