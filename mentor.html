@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260702p" />
-  <link rel="stylesheet" href="css/app.css?v=20260702p" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260702q" />
+  <link rel="stylesheet" href="css/app.css?v=20260702q" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -66,7 +66,7 @@
             <label for="bDate">날짜</label>
             <input class="input" type="date" id="bDate" required />
           </div>
-          <div class="field-row">
+          <div class="field-row compact">
             <div class="field">
               <label for="bStart">시작</label>
               <input class="input" type="time" id="bStart" value="09:00" required />
@@ -87,6 +87,9 @@
         <!-- 구글 캘린더 연동 (가져오기 + 구독) -->
         <div class="card">
           <div class="card-title">📅 구글 캘린더 연동</div>
+          <p class="mobile-note text-caption" style="margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: var(--color-bg-primary-weak); border-radius: var(--radius-medium); color: var(--color-fg-normal)">
+            💻 이 설정은 <b>PC(컴퓨터)에서</b> 하는 게 편해요. 폰에선 주소 복사 정도만 됩니다.
+          </p>
 
           <div class="text-sm" style="font-weight:600; margin-bottom: var(--space-2)">📥 구글에서 가져오기 <span class="text-caption text-muted">(내 약속 → 불가시간)</span></div>
           <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
@@ -201,10 +204,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260702p"></script>
-  <script src="js/auth.js?v=20260702p"></script>
-  <script src="js/util.js?v=20260702p"></script>
-  <script src="js/mentor.js?v=20260702p"></script>
-  <script src="js/materials.js?v=20260702p"></script>
+  <script src="js/config.js?v=20260702q"></script>
+  <script src="js/auth.js?v=20260702q"></script>
+  <script src="js/util.js?v=20260702q"></script>
+  <script src="js/mentor.js?v=20260702q"></script>
+  <script src="js/materials.js?v=20260702q"></script>
 </body>
 </html>

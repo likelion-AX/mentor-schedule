@@ -210,6 +210,13 @@ a:hover { text-decoration: underline; }
 }
 .field-row { display: flex; gap: var(--space-3); }
 .field-row > .field { flex: 1; }
+/* 모바일 전용 안내(데스크톱에선 숨김) */
+.mobile-note { display: none; }
+@media (max-width: 700px) {
+  .mobile-note { display: block; }
+  /* 시간처럼 좁은 입력 두 칸은 모바일에서도 세로로 안 쌓고 나란히 */
+  .field-row.compact { flex-direction: row; gap: var(--space-2); }
+}
 
 /* ---------- Badge / chip ---------- */
 .badge {

@@ -55,7 +55,7 @@ async function loadGcalImport() {
       <div class="field">
         <input class="input" type="url" id="gcalUrl" placeholder="구글 비공개 주소 (https://calendar.google.com/.../basic.ics)" />
       </div>
-      <button class="btn btn-secondary btn-sm" id="gcalConnect" type="button">연결</button>`;
+      <button class="btn btn-primary btn-sm" id="gcalConnect" type="button">연결</button>`;
     document.getElementById("gcalConnect").addEventListener("click", connectGcal);
     return;
   }
@@ -69,7 +69,7 @@ async function loadGcalImport() {
       <div class="text-caption">🔗 연결됨 · ${status}</div>
       <div class="text-caption text-muted">마지막 동기화: ${when}</div>
       <div class="row mt-4" style="gap: var(--space-2)">
-        <button class="btn btn-secondary btn-sm" id="gcalSync" type="button">지금 동기화</button>
+        <button class="btn btn-primary btn-sm" id="gcalSync" type="button">지금 동기화</button>
         <button class="btn btn-ghost btn-sm" id="gcalDisconnect" type="button">연결 해제</button>
       </div>
     </div>`;
