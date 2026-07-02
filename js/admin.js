@@ -137,6 +137,7 @@ async function init() {
   document.getElementById("hubImportOpenBtn")?.addEventListener("click", openHubImportModal);
   document.getElementById("hubCancelBtn")?.addEventListener("click", closeHubImportModal);
   document.getElementById("hubCohort")?.addEventListener("change", previewHubImport);
+  document.getElementById("hubCohortId")?.addEventListener("input", previewHubImport);
   document.getElementById("hubImportBtn")?.addEventListener("click", doHubImport);
   document.getElementById("hubImportModal")?.addEventListener("click", (e) => {
     if (e.target.id === "hubImportModal") closeHubImportModal();
@@ -549,10 +550,13 @@ function materialsSection(program) {
   const groups = {};
   mats.forEach((m) => { (groups[m.week_no || 0] ||= []).push(m); });
   const keys = Object.keys(groups).map(Number).sort((a, b) => a - b);
-  const sessDate = (n) => (program.sessions[n - 1] ? " · " + Util.fmtDate(program.sessions[n - 1].date) : "");
+  const sessDate = (n) => (program.sessions[n - 1] ? Util.fmtDate(program.sessions[n - 1].date) : "");
   const body = mats.length
     ? keys.map((k) => {
-        const head = k === 0 ? "전체(공통)" : `${k}회차${sessDate(k)}`;
+        const cnt = groups[k].length;
+        const round = k === 0 ? "공통 자료" : `${k}회차`;
+        const date = k === 0 ? "" : sessDate(k);
+        const openAttr = keys.length === 1 ? " open" : ""; // 회차가 하나뿐이면 펼쳐서
         const items = groups[k].map((m) => {
           const who = state.mentorsById[m.owner_id]?.name || "";
           const isLink = !!m.link_url;
@@ -571,10 +575,14 @@ function materialsSection(program) {
             </div>
           </div>`;
         }).join("");
-        return `<div style="margin-bottom: var(--space-2)">
-          <div class="text-caption" style="color:var(--color-fg-assistive); font-weight: var(--font-weight-bold)">${Util.escapeHtml(head)}</div>
-          ${items}
-        </div>`;
+        return `<details class="mat-week"${openAttr}>
+          <summary>
+            <span class="mw-round">${Util.escapeHtml(round)}</span>
+            ${date ? `<span class="mw-date">${Util.escapeHtml(date)}</span>` : ""}
+            <span class="mw-count">자료 ${cnt}개</span>
+          </summary>
+          <div class="mw-body">${items}</div>
+        </details>`;
       }).join("")
     : `<p class="text-caption text-muted">아직 올라온 자료가 없어요. (멘토가 ‘내 교육자료’에서 올립니다)</p>`;
   return `<div class="mat-prog-block" style="margin-bottom: var(--space-5)">
@@ -700,6 +708,10 @@ const HUB_FB_CONFIG = {
 let hubFbReady = null;      // Firebase 초기화+익명로그인 Promise(1회)
 let hubLessonsCache = null; // 미리보기에서 읽어둔 선택 기수의 lessons
 
+function hubErr(e) {
+  if (!e) return "알 수 없는 오류";
+  return [e.code, e.message].filter(Boolean).join(" — ") || String(e);
+}
 function initHubFirebase() {
   if (hubFbReady) return hubFbReady;
   hubFbReady = (async () => {
@@ -725,20 +737,29 @@ async function openHubImportModal() {
   preview.textContent = "허브에 연결 중…";
   try {
     const db = await initHubFirebase();
-    const [cohortsSnap, activeSnap] = await Promise.all([
-      db.ref("cohorts").once("value"),
-      db.ref("activeCohort").once("value"),
-    ]);
-    const cohorts = cohortsSnap.val() || {};
-    const active = activeSnap.val();
-    const ids = Object.keys(cohorts);
-    if (!ids.length) { cohortSel.innerHTML = ""; preview.textContent = "허브에 기수가 없습니다."; return; }
-    cohortSel.innerHTML = ids
-      .map((id) => `<option value="${id}" ${id === active ? "selected" : ""}>${Util.escapeHtml(cohorts[id]?.info?.name || id)}</option>`)
-      .join("");
+    const active = (await db.ref("activeCohort").once("value")).val();
+    // 기수 목록(cohortList)이 열려 있으면 전체를 드롭다운으로. 막혀 있으면 활성 기수만 폴백.
+    let listHtml = "";
+    try {
+      const list = (await db.ref("cohortList").once("value")).val();
+      if (list) {
+        listHtml = Object.entries(list)
+          .sort((a, b) => (b[1]?.createdAt || 0) - (a[1]?.createdAt || 0))
+          .map(([id, v]) => `<option value="${Util.escapeHtml(id)}" ${id === active ? "selected" : ""}>${Util.escapeHtml(v?.name || id)}${id === active ? " · 현재" : ""}</option>`)
+          .join("");
+      }
+    } catch (_) { /* cohortList 읽기 권한 없음 → 폴백 */ }
+    if (!listHtml) {
+      if (!active) { cohortSel.innerHTML = ""; preview.textContent = "허브에 진행 중인 기수가 없습니다."; return; }
+      let name = active;
+      try { name = (await db.ref("cohorts/" + active + "/info").once("value")).val()?.name || active; } catch (_) {}
+      listHtml = `<option value="${Util.escapeHtml(active)}">${Util.escapeHtml(name)} (현재 진행 기수)</option>`;
+    }
+    cohortSel.innerHTML = listHtml;
     previewHubImport();
   } catch (e) {
-    preview.textContent = "허브 연결 실패: " + (e.message || e);
+    console.error("[허브 가져오기] 연결 실패", e);
+    preview.textContent = "허브 연결 실패: " + hubErr(e);
   }
 }
 function closeHubImportModal() {
@@ -746,15 +767,25 @@ function closeHubImportModal() {
   hubLessonsCache = null;
 }
 
+// 효과적 기수 ID: '다른 기수 ID' 입력이 있으면 그걸, 없으면 현재 활성 기수
+function hubCohortId() {
+  const override = (document.getElementById("hubCohortId")?.value || "").trim();
+  return override || (document.getElementById("hubCohort")?.value || "");
+}
+
 async function previewHubImport() {
   const preview = document.getElementById("hubPreview");
-  const id = document.getElementById("hubCohort").value;
+  const id = hubCohortId();
   if (!id) return;
   preview.textContent = "불러오는 중…";
   try {
     const db = await initHubFirebase();
-    const snap = await db.ref("cohorts/" + id + "/lessons").once("value");
-    const lessons = snap.val() || {};
+    const [lessonsSnap, infoSnap] = await Promise.all([
+      db.ref("cohorts/" + id + "/lessons").once("value"),
+      db.ref("cohorts/" + id + "/info").once("value"),
+    ]);
+    const lessons = lessonsSnap.val() || {};
+    const cname = infoSnap.val()?.name || id;
     hubLessonsCache = lessons;
     const weeks = Object.keys(lessons).sort((a, b) => a.localeCompare(b));
     let total = 0;
@@ -764,10 +795,11 @@ async function previewHubImport() {
       return `${w}주차 ${cnt}개`;
     });
     preview.innerHTML = total
-      ? `가져올 링크 <b>${total}개</b> (${parts.join(", ")}) — 주차 → 회차로 넣습니다. 이미 있는 링크는 건너뜁니다.`
-      : "이 기수에는 가져올 링크가 없습니다.";
+      ? `<b>${Util.escapeHtml(cname)}</b> · 가져올 링크 <b>${total}개</b> (${parts.join(", ")}) — 주차 → 회차로 넣고, 이미 있는 링크는 건너뜁니다.`
+      : `<b>${Util.escapeHtml(cname)}</b> · 가져올 링크가 없습니다.`;
   } catch (e) {
-    preview.textContent = "미리보기 실패: " + (e.message || e);
+    console.error("[허브 가져오기] 미리보기 실패", e);
+    preview.textContent = "미리보기 실패: " + hubErr(e);
   }
 }
 

@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260702x" />
-  <link rel="stylesheet" href="css/app.css?v=20260702x" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260702z3" />
+  <link rel="stylesheet" href="css/app.css?v=20260702z3" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -445,6 +445,15 @@
       <div class="field">
         <label for="hubCohort">가져올 기수 (허브)</label>
         <select class="select" id="hubCohort"></select>
+        <details style="margin-top: var(--space-2)">
+          <summary class="text-caption" style="cursor:pointer">다른 기수(예: 3기) 가져오기</summary>
+          <div style="margin-top: var(--space-2)">
+            <input class="input" id="hubCohortId" placeholder="기수 ID (비우면 위 현재 기수)" />
+            <p class="text-caption text-muted" style="margin-top: var(--space-1)">
+              허브에서 그 기수를 열었을 때 주소의 <b>?c=</b> 뒤 값이에요. (규칙상 과거 기수는 목록으로 못 불러와서 ID로 지정합니다.)
+            </p>
+          </div>
+        </details>
       </div>
       <div class="field">
         <label for="hubProgram">넣을 교육 (이 앱)</label>
@@ -488,9 +497,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="js/config.js?v=20260702x"></script>
-  <script src="js/auth.js?v=20260702x"></script>
-  <script src="js/util.js?v=20260702x"></script>
-  <script src="js/admin.js?v=20260702x"></script>
+  <script src="js/config.js?v=20260702z3"></script>
+  <script src="js/auth.js?v=20260702z3"></script>
+  <script src="js/util.js?v=20260702z3"></script>
+  <script src="js/admin.js?v=20260702z3"></script>
 </body>
 </html>

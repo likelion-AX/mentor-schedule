@@ -336,6 +336,23 @@ a:hover { text-decoration: underline; }
 .mat-dd-row input { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; }
 .mat-dd-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* 교육자료: 회차별 접기(토글) — 날짜·회차 강조 */
+.mat-week { border: 1px solid var(--color-border-weak); border-radius: var(--radius-medium); margin-bottom: var(--space-2); overflow: hidden; background: var(--color-bg-surface); }
+.mat-week > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3); background: var(--color-bg-normal);
+}
+.mat-week > summary::-webkit-details-marker { display: none; }
+.mat-week > summary::before {
+  content: "▸"; color: var(--color-fg-assistive); font-size: 12px; transition: transform 0.15s ease; flex-shrink: 0;
+}
+.mat-week[open] > summary::before { transform: rotate(90deg); }
+.mat-week .mw-round { font-weight: var(--font-weight-bold); color: var(--color-fg-primary); }
+.mat-week .mw-date { font-weight: var(--font-weight-semibold); color: var(--color-fg-normal); }
+.mat-week .mw-count { margin-left: auto; font-size: var(--font-size-caption); color: var(--color-fg-assistive); }
+.mat-week .mw-body { padding: 2px var(--space-3) var(--space-2); }
+
 /* 구글 가져오기 '내용 미공유' 예시 (구글 원본 → 앱엔 시간만) */
 .gcal-eg { display: flex; align-items: stretch; gap: var(--space-2); margin: 0 0 var(--space-4); }
 .gcal-eg-item { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
