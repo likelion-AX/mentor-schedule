@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260702r" />
-  <link rel="stylesheet" href="css/app.css?v=20260702r" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260702s" />
+  <link rel="stylesheet" href="css/app.css?v=20260702s" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -101,6 +101,23 @@
             구글에 적어둔 개인 약속을 자동으로 <b>'불가 시간'</b>으로 가져옵니다.
             <b>제목·내용은 저장하지 않고 시간만</b> 가져와요 (운영팀에도 시간만 보임).
           </p>
+          <div class="gcal-eg" aria-hidden="true">
+            <div class="gcal-eg-item">
+              <div class="gcal-eg-cap">구글 캘린더(내 원본)</div>
+              <div class="gcal-eg-box">
+                <div class="text-sm" style="font-weight: 600">팀 회식 🍽</div>
+                <div class="text-caption text-muted">강남역 · 19:00–21:00</div>
+              </div>
+            </div>
+            <div class="gcal-eg-arrow">→</div>
+            <div class="gcal-eg-item">
+              <div class="gcal-eg-cap">앱·운영팀이 보는 것</div>
+              <div class="gcal-eg-box app">
+                <div class="text-sm" style="font-weight: 600">🔒 불가 시간</div>
+                <div class="text-caption text-muted">19:00–21:00 · <span style="opacity:.75">제목·장소 없음</span></div>
+              </div>
+            </div>
+          </div>
           <div id="gcalImport" class="stack"></div>
           <details style="margin-top: var(--space-3)">
             <summary class="text-caption" style="cursor:pointer"><b>구글 "비공개 주소(iCal)" 찾는 법</b> — 눌러서 펼치기</summary>
@@ -209,10 +226,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260702r"></script>
-  <script src="js/auth.js?v=20260702r"></script>
-  <script src="js/util.js?v=20260702r"></script>
-  <script src="js/mentor.js?v=20260702r"></script>
-  <script src="js/materials.js?v=20260702r"></script>
+  <script src="js/config.js?v=20260702s"></script>
+  <script src="js/auth.js?v=20260702s"></script>
+  <script src="js/util.js?v=20260702s"></script>
+  <script src="js/mentor.js?v=20260702s"></script>
+  <script src="js/materials.js?v=20260702s"></script>
 </body>
 </html>

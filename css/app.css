@@ -312,6 +312,14 @@ a:hover { text-decoration: underline; }
 .mentor-me-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: var(--space-6); align-items: start; }
 @media (max-width: 900px) { .mentor-me-grid { grid-template-columns: 1fr; gap: var(--space-4); } }
 
+/* 구글 가져오기 '내용 미공유' 예시 (구글 원본 → 앱엔 시간만) */
+.gcal-eg { display: flex; align-items: stretch; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.gcal-eg-item { flex: 1 1 0; min-width: 0; }
+.gcal-eg-cap { font-size: var(--font-size-caption); color: var(--color-fg-assistive); margin-bottom: 4px; }
+.gcal-eg-box { border: 1px solid var(--color-border-weak); border-radius: var(--radius-medium); padding: var(--space-2); background: var(--color-bg-surface); height: 100%; }
+.gcal-eg-box.app { border-color: var(--cal-block-border); background: var(--cal-block-bg); }
+.gcal-eg-arrow { align-self: center; flex: none; color: var(--color-fg-assistive); font-size: 18px; }
+
 /* 운영팀: 큰 캘린더(좌) + 배정 보드(우) */
 .grid-calboard { display: grid; grid-template-columns: 1fr 400px; gap: var(--space-6); align-items: start; }
 .grid-calboard .board-col { position: sticky; top: 88px; }
