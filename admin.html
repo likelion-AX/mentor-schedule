@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260702u" />
-  <link rel="stylesheet" href="css/app.css?v=20260702u" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260702v" />
+  <link rel="stylesheet" href="css/app.css?v=20260702v" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -149,11 +149,21 @@
       <div class="card">
         <div class="card-title" style="margin:0 0 var(--space-2)">교육자료</div>
         <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
-          평소엔 <b>자료가 있는 교육만</b> 보여요. 자료가 없는 교육에 올리려면 아래에서 <b>교육명을 검색</b>하세요.
-          멘토가 ‘내 교육자료’에서 올린 자료도 함께 보입니다.
+          아래에서 교육을 골라 자료를 봅니다. <b>여러 개 선택</b>하면 여러 교육의 자료를 한 번에 볼 수 있어요. 멘토가 ‘내 교육자료’에서 올린 자료도 함께 보입니다.
         </p>
-        <input class="input" id="matSearch" placeholder="🔍 교육 검색 (회사·교육명)" style="max-width: 340px; margin-bottom: var(--space-3)" />
-        <div class="tabs tabs-pills" id="matProgramTabs" role="tablist"></div>
+        <div class="mat-dropdown" id="matDropdown">
+          <button class="mat-dd-trigger" id="matDdTrigger" type="button">
+            <span id="matDdLabel">교육 선택</span><span aria-hidden="true">▾</span>
+          </button>
+          <div class="mat-dd-panel hidden" id="matDdPanel">
+            <input class="input" id="matSearch" placeholder="🔍 교육 검색" style="margin-bottom: var(--space-2)" />
+            <div class="mat-dd-actions">
+              <button class="btn btn-ghost btn-sm" id="matSelAll" type="button">전체 선택</button>
+              <button class="btn btn-ghost btn-sm" id="matSelNone" type="button">전체 해제</button>
+            </div>
+            <div id="matDdList" class="mat-dd-list"></div>
+          </div>
+        </div>
         <div id="matPanel"></div>
       </div>
     </section>
@@ -447,9 +457,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260702u"></script>
-  <script src="js/auth.js?v=20260702u"></script>
-  <script src="js/util.js?v=20260702u"></script>
-  <script src="js/admin.js?v=20260702u"></script>
+  <script src="js/config.js?v=20260702v"></script>
+  <script src="js/auth.js?v=20260702v"></script>
+  <script src="js/util.js?v=20260702v"></script>
+  <script src="js/admin.js?v=20260702v"></script>
 </body>
 </html>

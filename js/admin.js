@@ -19,7 +19,7 @@ let state = {
   assignments: [],     // {id, program_id, person_email, staff_type, status}
   materials: [],       // {id, program_id, week_no, owner_id, title, file_path, ...}
   selectedProgramId: null,
-  selectedMatProgramId: null, // 교육자료 탭에서 보고 있는 교육
+  selectedMatProgramIds: null, // 교육자료 탭에서 선택한 교육들(다중). null=최초(기본선택 계산 전)
 };
 const TYPE_LABEL = { mentor: "멘토", facilitator: "퍼실리테이터" };
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "p-" + Date.now() + "-" + Math.floor(Math.random() * 1e9));
@@ -109,8 +109,29 @@ async function init() {
     if (e.target.id === "materialModal") closeMaterialModal();
   });
 
-  // 교육자료 탭: 교육 검색(입력할 때마다 후보 재계산)
-  document.getElementById("matSearch")?.addEventListener("input", renderMaterialsTab);
+  // 교육자료 탭: 다중선택 드롭다운(현재 모든 교육 + 검색, 여러 개 선택)
+  document.getElementById("matDdTrigger")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.getElementById("matDdPanel")?.classList.toggle("hidden");
+  });
+  document.getElementById("matSearch")?.addEventListener("input", renderMatDropdownList);
+  document.getElementById("matSelAll")?.addEventListener("click", () => {
+    const q = (document.getElementById("matSearch")?.value || "").trim().toLowerCase();
+    const s = new Set(state.selectedMatProgramIds || []);
+    state.programs
+      .filter((p) => !q || (p.client || "").toLowerCase().includes(q) || (p.title || "").toLowerCase().includes(q))
+      .forEach((p) => s.add(p.id));
+    state.selectedMatProgramIds = [...s];
+    renderMatDropdownList(); renderMatPanel(); updateMatLabel();
+  });
+  document.getElementById("matSelNone")?.addEventListener("click", () => {
+    state.selectedMatProgramIds = [];
+    renderMatDropdownList(); renderMatPanel(); updateMatLabel();
+  });
+  document.addEventListener("click", (e) => {
+    const dd = document.getElementById("matDropdown");
+    if (dd && !dd.contains(e.target)) document.getElementById("matDdPanel")?.classList.add("hidden");
+  });
 
   // 목록 검색 + 페이지
   bindSearch("programSearch", "program", renderProgramList);
@@ -547,73 +568,101 @@ function materialsSection(program) {
         </div>`;
       }).join("")
     : `<p class="text-caption text-muted">아직 올라온 자료가 없어요. (멘토가 ‘내 교육자료’에서 올립니다)</p>`;
-  return `<div style="margin-bottom: var(--space-3)">
+  return `<div class="mat-prog-block" style="margin-bottom: var(--space-5)">
       <div class="row-between" style="margin-bottom: var(--space-2)">
-        <strong class="text-sm">교육자료${mats.length ? ` (${mats.length})` : ""}</strong>
-        <button class="btn btn-secondary btn-sm" id="addMaterialBtn">+ 자료 추가</button>
+        <strong class="text-sm">${Util.escapeHtml(program.client || program.title || "제목 없음")}${mats.length ? ` · ${mats.length}건` : ""}</strong>
+        <button class="btn btn-secondary btn-sm" data-add-mat="${program.id}">+ 자료 추가</button>
       </div>
       ${body}
     </div>`;
 }
 
-// ---------- 교육자료 탭 (교육별 알약 선택 → 회차별 자료 모아보기) ----------
-// 교육이 많아지면 알약을 하나하나 찾기 번거로우므로:
-//  · 평소엔 '자료 있는 교육'만 알약으로 표시(자료 많은 순).
-//  · 검색하면 매칭되는 모든 교육(자료 없는 것 포함)을 표시 → 새 자료 올릴 교육 찾기.
-function renderMaterialsTab() {
-  const tabs = document.getElementById("matProgramTabs");
-  const panel = document.getElementById("matPanel");
-  if (!tabs || !panel) return;
+// ---------- 교육자료 탭 (다중선택 드롭다운 → 선택한 교육들의 자료 모아보기) ----------
+function matCount(id) { return state.materials.filter((m) => m.program_id === id).length; }
 
-  const programs = state.programs;
-  if (!programs.length) {
-    tabs.innerHTML = "";
+function renderMaterialsTab() {
+  if (!document.getElementById("matPanel")) return;
+  // 최초 진입: 자료가 있는 교육을 기본 선택(없으면 빈 선택)
+  if (state.selectedMatProgramIds === null) {
+    state.selectedMatProgramIds = state.programs.filter((p) => matCount(p.id) > 0).map((p) => p.id);
+  }
+  // 삭제된 교육 정리
+  state.selectedMatProgramIds = state.selectedMatProgramIds.filter((id) => state.programById[id]);
+  renderMatDropdownList();
+  renderMatPanel();
+  updateMatLabel();
+}
+
+// 드롭다운 안 교육 체크박스 목록(검색어로 필터). 현재 '모든' 교육을 보여줌.
+function renderMatDropdownList() {
+  const list = document.getElementById("matDdList");
+  if (!list) return;
+  if (!state.programs.length) {
+    list.innerHTML = `<p class="text-caption text-muted" style="padding: var(--space-2)">교육이 없습니다.</p>`;
+    return;
+  }
+  const q = (document.getElementById("matSearch")?.value || "").trim().toLowerCase();
+  const progs = state.programs.filter((p) =>
+    !q || (p.client || "").toLowerCase().includes(q) || (p.title || "").toLowerCase().includes(q));
+  if (!progs.length) {
+    list.innerHTML = `<p class="text-caption text-muted" style="padding: var(--space-2)">‘${Util.escapeHtml(q)}’ 검색 결과가 없습니다.</p>`;
+    return;
+  }
+  const sel = new Set(state.selectedMatProgramIds);
+  list.innerHTML = progs.map((p) => {
+    const n = matCount(p.id);
+    return `<label class="mat-dd-row">
+      <input type="checkbox" data-matpick="${p.id}" ${sel.has(p.id) ? "checked" : ""} />
+      <span class="mat-dd-name">${Util.escapeHtml(p.client || p.title || "제목 없음")}</span>
+      <span class="${n ? "badge badge-neutral" : "text-caption text-muted"}">${n}</span>
+    </label>`;
+  }).join("");
+  list.querySelectorAll("[data-matpick]").forEach((cb) =>
+    cb.addEventListener("change", () => {
+      const s = new Set(state.selectedMatProgramIds);
+      if (cb.checked) s.add(cb.dataset.matpick); else s.delete(cb.dataset.matpick);
+      state.selectedMatProgramIds = [...s];
+      renderMatPanel();
+      updateMatLabel();
+    }));
+}
+
+// 선택된 교육들의 자료를 교육별로 나열
+function renderMatPanel() {
+  const panel = document.getElementById("matPanel");
+  if (!panel) return;
+  if (!state.programs.length) {
     panel.innerHTML = `<p class="text-caption text-muted">아직 교육이 없어요. ‘교육 목록’ 탭에서 교육을 먼저 추가하세요.</p>`;
     return;
   }
-
-  const q = (document.getElementById("matSearch")?.value || "").trim().toLowerCase();
-  const matCount = (id) => state.materials.filter((m) => m.program_id === id).length;
-  const labelOf = (p) => p.client || p.title || "제목 없음";
-
-  // 후보 교육 목록 결정
-  let candidates;
-  if (q) {
-    candidates = programs.filter((p) =>
-      (p.client || "").toLowerCase().includes(q) || (p.title || "").toLowerCase().includes(q));
-  } else {
-    const withMat = programs.filter((p) => matCount(p.id) > 0);
-    candidates = withMat.length ? withMat : programs; // 자료 있는 교육이 하나도 없으면 전체 노출
-  }
-  // 자료 많은 순 → 최근 시작일 순
-  candidates = candidates.slice().sort((a, b) =>
-    matCount(b.id) - matCount(a.id) || (b.firstDate || "").localeCompare(a.firstDate || ""));
-
-  if (!candidates.length) {
-    tabs.innerHTML = "";
-    panel.innerHTML = `<p class="text-caption text-muted">‘${Util.escapeHtml(q)}’ 검색 결과가 없습니다.</p>`;
+  const progs = (state.selectedMatProgramIds || [])
+    .map((id) => state.programById[id])
+    .filter(Boolean)
+    .sort((a, b) => (a.firstDate || "").localeCompare(b.firstDate || ""));
+  if (!progs.length) {
+    panel.innerHTML = `<p class="text-caption text-muted">위 <b>교육 선택</b>에서 교육을 고르면 자료가 표시됩니다. (여러 개 선택 가능)</p>`;
     return;
   }
-
-  // 선택 교육: 기존 선택이 후보에 남아 있으면 유지, 아니면 첫 후보(자료 많은 교육)
-  let pid = state.selectedMatProgramId;
-  if (!pid || !candidates.some((p) => p.id === pid)) pid = candidates[0].id;
-  state.selectedMatProgramId = pid;
-
-  tabs.innerHTML = candidates.map((p) => {
-    const n = matCount(p.id);
-    return `<button class="tab-btn" role="tab" data-matprog="${p.id}" aria-selected="${p.id === pid}">${Util.escapeHtml(labelOf(p))}${n ? ` <span class="tab-count">${n}</span>` : ""}</button>`;
-  }).join("");
-  tabs.querySelectorAll("[data-matprog]").forEach((b) =>
-    b.addEventListener("click", () => { state.selectedMatProgramId = b.dataset.matprog; renderMaterialsTab(); }));
-
-  const program = state.programById[pid];
-  panel.innerHTML = materialsSection(program);
-  wireMaterialButtons(panel, program);
+  panel.innerHTML = progs.map((p) => materialsSection(p)).join("");
+  wireMaterialButtons(panel);
 }
 
-// materialsSection이 만든 버튼(다운로드/열기/삭제/추가) 이벤트 연결 — 재사용
-function wireMaterialButtons(root, program) {
+// 드롭다운 트리거 라벨(선택 개수/이름)
+function updateMatLabel() {
+  const el = document.getElementById("matDdLabel");
+  if (!el) return;
+  const ids = state.selectedMatProgramIds || [];
+  if (!ids.length) { el.textContent = "교육 선택"; return; }
+  if (ids.length === 1) {
+    const p = state.programById[ids[0]];
+    el.textContent = p ? (p.client || p.title || "1개") : "1개 교육";
+    return;
+  }
+  el.textContent = `${ids.length}개 교육 선택됨`;
+}
+
+// materialsSection이 만든 버튼(다운로드/열기/삭제/추가) 이벤트 연결 — 여러 교육 블록 공통
+function wireMaterialButtons(root) {
   root.querySelectorAll("[data-mat-dl]").forEach((b) =>
     b.addEventListener("click", () => downloadMaterial(b.dataset.matDl)));
   root.querySelectorAll("[data-mat-open]").forEach((b) =>
@@ -623,7 +672,8 @@ function wireMaterialButtons(root, program) {
     }));
   root.querySelectorAll("[data-mat-del]").forEach((b) =>
     b.addEventListener("click", () => deleteMaterial(b.dataset.matDel)));
-  root.querySelector("#addMaterialBtn")?.addEventListener("click", () => openMaterialModal(program));
+  root.querySelectorAll("[data-add-mat]").forEach((b) =>
+    b.addEventListener("click", () => openMaterialModal(state.programById[b.dataset.addMat])));
 }
 
 async function downloadMaterial(id) {
