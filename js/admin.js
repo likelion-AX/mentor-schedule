@@ -129,6 +129,7 @@ async function init() {
     onShow: (key) => {
       // 캘린더는 숨겨진 패널에서 그려지면 크기가 0이 되므로, 보일 때 크기 재계산
       if (key === "schedule" && calendar) calendar.updateSize();
+      if (key === "myschedule" && myCal) myCal.updateSize();
     },
   });
 
@@ -175,6 +176,7 @@ async function loadAll() {
   if (state.selectedProgramId && !state.programById[state.selectedProgramId]) state.selectedProgramId = null;
   renderBoard();
   renderMaterialsTab();
+  renderMyScheduleTab();
 
   // URL로 바로 호출: admin.html?img=교육명
   if (!urlImgHandled) {
@@ -1819,6 +1821,74 @@ async function copyShareImage() {
 }
 
 // ---------- 멘토 스케줄 보기 (배정 교육 + 개인 일정) ----------
+// ---------- 내 일정 탭 (운영자 본인의 배정 교육 + 개인 일정, 보기 전용) ----------
+let myCal = null;
+function renderMyScheduleTab() {
+  const calEl = document.getElementById("myCalendar");
+  if (!calEl) return;
+  const email = me.email;
+  const myAssign = state.assignments.filter((a) => a.person_email === email);
+  const progIds = [...new Set(myAssign.map((a) => a.program_id))];
+  const blocks = state.blocksByEmail[email] || [];
+
+  const sum = document.getElementById("mySchedSummary");
+  if (sum) sum.innerHTML = `내 배정 교육 <b>${progIds.length}</b>개 · 개인 일정 <b>${blocks.length}</b>건 · 개인 일정은 본인과 운영팀만 볼 수 있어요.`;
+
+  // 우측: 내 배정 교육 목록
+  const myPrograms = progIds.map((id) => state.programById[id]).filter(Boolean)
+    .sort((a, b) => (a.firstDate || "").localeCompare(b.firstDate || ""));
+  const listEl = document.getElementById("myAssignList");
+  if (listEl) {
+    listEl.innerHTML = myPrograms.length
+      ? myPrograms.map((p) => {
+          const a = myAssign.find((x) => x.program_id === p.id);
+          const time = p.timeVaries ? "회차별 상이" : `${Util.hhmm(p.start_time)}~${Util.hhmm(p.end_time)}`;
+          const cnt = p.sessions.length > 1 ? ` · ${p.sessions.length}회` : "";
+          return `<div class="board-person">
+            <div class="bp-top">
+              <span class="bp-name" style="cursor:default; text-decoration:none">${Util.escapeHtml(p.client || p.title)}</span>
+              <div class="bp-tags"><span class="badge badge-status-${a.status}">${a.status}</span></div>
+            </div>
+            <div class="text-caption text-muted">${programDatesLabel(p)}${cnt} · ${time}</div>
+          </div>`;
+        }).join("")
+      : `<p class="text-caption text-muted">아직 배정된 교육이 없습니다.</p>`;
+  }
+
+  // 좌측: 캘린더 (배정 교육 + 개인 일정)
+  if (myCal) { myCal.destroy(); myCal = null; }
+  const allDates = [];
+  myAssign.forEach((a) => state.programById[a.program_id]?.sessions.forEach((s) => allDates.push(s.date)));
+  blocks.forEach((b) => allDates.push(b.date));
+  const initialDate = allDates.length ? allDates.sort()[0] : undefined;
+
+  myCal = new FullCalendar.Calendar(calEl, {
+    initialView: "dayGridMonth",
+    locale: "ko",
+    height: 640,
+    initialDate,
+    headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,listMonth" },
+    buttonText: { today: "오늘", month: "월", list: "목록" },
+  });
+  myAssign.forEach((a) => {
+    const p = state.programById[a.program_id];
+    if (!p) return;
+    p.sessions.forEach((s) => myCal.addEvent({
+      title: `${p.client || p.title} · ${a.status}`,
+      start: Util.toDateTime(s.date, s.start_time),
+      end: Util.toDateTime(s.date, s.end_time),
+      classNames: ["cal-assigned"],
+    }));
+  });
+  blocks.forEach((b) => myCal.addEvent({
+    title: `🔒 ${b.memo || "개인 일정"}`,
+    start: Util.toDateTime(b.date, b.start_time),
+    end: Util.toDateTime(b.date, b.end_time),
+    classNames: ["cal-block"],
+  }));
+  myCal.render();
+}
+
 let mentorCal = null;
 function openMentorSchedule(email) {
   const person = state.rosterByEmail[email];

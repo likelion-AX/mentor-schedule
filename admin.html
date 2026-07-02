@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260702i" />
-  <link rel="stylesheet" href="css/app.css?v=20260702i" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260702j" />
+  <link rel="stylesheet" href="css/app.css?v=20260702j" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -29,6 +29,7 @@
       <button class="tab-btn" role="tab" data-tab="programs">📋 교육 목록</button>
       <button class="tab-btn" role="tab" data-tab="roster">👥 명단 관리</button>
       <button class="tab-btn" role="tab" data-tab="materials">📚 교육자료</button>
+      <button class="tab-btn" role="tab" data-tab="myschedule">🙋 내 일정</button>
     </div>
 
     <!-- ===== 탭: 일정 & 배정 ===== -->
@@ -154,6 +155,32 @@
         <input class="input" id="matSearch" placeholder="🔍 교육 검색 (회사·교육명)" style="max-width: 340px; margin-bottom: var(--space-3)" />
         <div class="tabs tabs-pills" id="matProgramTabs" role="tablist"></div>
         <div id="matPanel"></div>
+      </div>
+    </section>
+
+    <!-- ===== 탭: 내 일정 (운영자 본인의 배정·개인일정 확인 — 보기 전용) ===== -->
+    <section class="tab-panel" data-panel="myschedule" hidden>
+      <div class="row-between" style="margin-bottom: var(--space-2)">
+        <div>
+          <h1 class="page-title" style="margin:0">내 일정</h1>
+          <p class="page-subtitle" style="margin:0" id="mySchedSummary">불러오는 중…</p>
+        </div>
+        <a class="btn btn-secondary btn-sm" href="mentor.html">개인 일정 등록·자료 관리 →</a>
+      </div>
+      <div class="grid-calboard">
+        <div class="card" style="padding: var(--space-4)">
+          <div class="legend" style="margin-bottom: var(--space-3)">
+            <span class="legend-item"><span class="legend-swatch assigned"></span> 내 배정 교육</span>
+            <span class="legend-item"><span class="legend-swatch block"></span> 내 개인 일정</span>
+          </div>
+          <div id="myCalendar"></div>
+        </div>
+        <div class="board-col">
+          <div class="card">
+            <div class="card-title" style="margin:0 0 var(--space-2)">내 배정 교육</div>
+            <div id="myAssignList" class="board-people"></div>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -420,9 +447,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260702i"></script>
-  <script src="js/auth.js?v=20260702i"></script>
-  <script src="js/util.js?v=20260702i"></script>
-  <script src="js/admin.js?v=20260702i"></script>
+  <script src="js/config.js?v=20260702j"></script>
+  <script src="js/auth.js?v=20260702j"></script>
+  <script src="js/util.js?v=20260702j"></script>
+  <script src="js/admin.js?v=20260702j"></script>
 </body>
 </html>
