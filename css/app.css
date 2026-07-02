@@ -301,6 +301,10 @@ a:hover { text-decoration: underline; }
   }
 }
 
+/* 멘토 '내 일정' 탭: 좌(배정 현황) + 우(캘린더). 모바일은 1열(배정 먼저) */
+.mentor-me-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: var(--space-6); align-items: start; }
+@media (max-width: 900px) { .mentor-me-grid { grid-template-columns: 1fr; gap: var(--space-4); } }
+
 /* 운영팀: 큰 캘린더(좌) + 배정 보드(우) */
 .grid-calboard { display: grid; grid-template-columns: 1fr 400px; gap: var(--space-6); align-items: start; }
 .grid-calboard .board-col { position: sticky; top: 88px; }

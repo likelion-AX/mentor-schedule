@@ -23,6 +23,15 @@ async function init() {
   if (me.role === "admin") document.getElementById("topNav").classList.remove("hidden");
 
   setupCalendar();
+  // 상단 탭: 내 일정 / 개인 일정·구글 / 교육자료 (마지막 탭 기억)
+  Util.initTabs({
+    list: "#mentorTabs",
+    storageKey: "mentorTab",
+    onShow: (key) => {
+      // 캘린더가 숨은 탭에서 그려지면 크기가 0이 되므로, '내 일정' 탭이 보일 때 재계산
+      if (key === "me" && calendar) calendar.updateSize();
+    },
+  });
   document.getElementById("blockForm").addEventListener("submit", onAddBlock);
   setupCalendarSync();
   loadGcalImport();

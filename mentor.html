@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 멘토 일정 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260702j" />
-  <link rel="stylesheet" href="css/app.css?v=20260702j" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260702k" />
+  <link rel="stylesheet" href="css/app.css?v=20260702k" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -24,36 +24,44 @@
   </header>
 
   <main class="page">
-    <h1 class="page-title">내 일정</h1>
-    <p class="page-subtitle">
-      본인이 배정받은 교육과 개인 일정이 표시됩니다. 개인 일정은 본인과 운영팀만 볼 수 있어요.
-    </p>
+    <div class="tabs" id="mentorTabs" role="tablist">
+      <button class="tab-btn" role="tab" data-tab="me" aria-selected="true">📅 내 일정</button>
+      <button class="tab-btn" role="tab" data-tab="personal">🙅 개인 일정·구글</button>
+      <button class="tab-btn" role="tab" data-tab="materials">📚 교육자료</button>
+    </div>
 
-    <div class="mentor-grid">
-      <!-- 내 배정 현황 (모바일에선 맨 위) -->
-      <div class="card area-assign">
-        <div class="card-title">내 배정 현황</div>
-        <div id="myAssignments" class="stack"></div>
-      </div>
-
-      <!-- 캘린더 -->
-      <div class="card area-calendar">
-        <div class="legend">
-          <span class="legend-item"><span class="legend-swatch assigned"></span> 내 배정 교육</span>
-          <span class="legend-item"><span class="legend-swatch block"></span> 내 개인 일정</span>
+    <!-- ===== 탭: 내 일정 (배정 현황 + 캘린더) ===== -->
+    <section class="tab-panel" data-panel="me">
+      <div class="mentor-me-grid">
+        <!-- 내 배정 현황 -->
+        <div class="card">
+          <div class="card-title">내 배정 현황</div>
+          <div id="myAssignments" class="stack"></div>
         </div>
-        <div id="calendar"></div>
-        <!-- 모바일: 선택한 날짜의 일정 -->
-        <div id="dayDetail" class="day-detail"></div>
-      </div>
 
-      <!-- 개인 일정 등록 -->
-      <div class="card area-personal">
-        <div class="card-title">개인 일정 등록</div>
-        <p class="text-caption text-muted" style="margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-4)">
-          배정 충돌 방지를 위한 가용 불가 시간입니다. 멘토끼리는 비공개.
-        </p>
-        <form id="blockForm">
+        <!-- 캘린더 -->
+        <div class="card">
+          <div class="legend">
+            <span class="legend-item"><span class="legend-swatch assigned"></span> 내 배정 교육</span>
+            <span class="legend-item"><span class="legend-swatch block"></span> 내 개인 일정</span>
+          </div>
+          <div id="calendar"></div>
+          <!-- 모바일: 선택한 날짜의 일정 -->
+          <div id="dayDetail" class="day-detail"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 탭: 개인 일정 · 구글 연동 ===== -->
+    <section class="tab-panel" data-panel="personal" hidden>
+      <div class="grid-2">
+        <!-- 개인 일정 등록 -->
+        <div class="card">
+          <div class="card-title">개인 일정 등록</div>
+          <p class="text-caption text-muted" style="margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-4)">
+            배정 충돌 방지를 위한 가용 불가 시간입니다. 본인과 운영팀만 볼 수 있어요(멘토끼리는 비공개).
+          </p>
+          <form id="blockForm">
           <div class="field">
             <label for="bDate">날짜</label>
             <input class="input" type="date" id="bDate" required />
@@ -74,9 +82,13 @@
           </div>
           <button class="btn btn-primary btn-block" type="submit">개인 일정 추가</button>
         </form>
+        </div>
 
-        <div style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-border-weak)">
-          <div class="text-sm" style="font-weight: 600; margin-bottom: var(--space-2)">📥 구글 캘린더에서 가져오기</div>
+        <!-- 구글 캘린더 연동 (가져오기 + 구독) -->
+        <div class="card">
+          <div class="card-title">📅 구글 캘린더 연동</div>
+
+          <div class="text-sm" style="font-weight:600; margin-bottom: var(--space-2)">📥 구글에서 가져오기 <span class="text-caption text-muted">(내 약속 → 불가시간)</span></div>
           <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
             구글에 적어둔 개인 약속을 자동으로 <b>'불가 시간'</b>으로 가져옵니다.
             <b>제목·내용은 저장하지 않고 시간만</b> 가져와요 (운영팀에도 시간만 보임).
@@ -110,16 +122,13 @@
               </p>
             </div>
           </details>
-        </div>
-      </div>
 
-      <!-- 구글 캘린더 자동 동기화 -->
-      <div class="card area-sync">
-        <div class="card-title">📅 구글 캘린더 자동 동기화</div>
-        <p class="text-caption text-muted" style="margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-4)">
-          아래 주소를 구글 캘린더에 한 번만 등록하면, 배정 교육·개인 일정이 자동으로 들어옵니다.
-          <b>본인만 아는 비밀 주소</b>예요. 남에게 공유하지 마세요.
-        </p>
+          <div style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-border-weak)">
+            <div class="text-sm" style="font-weight:600; margin-bottom: var(--space-2)">📤 내 일정 내보내기 <span class="text-caption text-muted">(구독 주소)</span></div>
+            <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+              아래 주소를 구글 캘린더에 한 번만 등록하면, 배정 교육·개인 일정이 자동으로 들어옵니다.
+              <b>본인만 아는 비밀 주소</b>예요. 남에게 공유하지 마세요.
+            </p>
         <div class="field">
           <label for="feedUrl">내 구독 주소</label>
           <input class="input" type="text" id="feedUrl" readonly value="불러오는 중…" onclick="this.select()" />
@@ -138,11 +147,15 @@
             <li>끝! 이후 일정이 바뀌면 구글이 자동으로 가져옵니다.<br>
               <span style="opacity:.8">(구글 갱신 주기상 반영까지 몇 시간~하루 걸릴 수 있어요. 즉시 보려면 배정 카드의 ⬇.ics 사용)</span></li>
           </ol>
-        </details>
+            </details>
+          </div>
+        </div>
       </div>
+    </section>
 
-      <!-- 교육자료 -->
-      <div class="card area-materials">
+    <!-- ===== 탭: 교육자료 ===== -->
+    <section class="tab-panel" data-panel="materials" hidden>
+      <div class="card">
         <div class="card-title">내 교육자료</div>
         <p class="text-caption text-muted" style="margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-4)">
           교육에 쓰는 자료를 올리고 관리하세요. 본인과 운영팀만 볼 수 있어요. (파일당 최대 50MB)
@@ -183,15 +196,15 @@
         </form>
         <div id="materialList" class="stack" style="margin-top: var(--space-5)"></div>
       </div>
-    </div>
+    </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260702j"></script>
-  <script src="js/auth.js?v=20260702j"></script>
-  <script src="js/util.js?v=20260702j"></script>
-  <script src="js/mentor.js?v=20260702j"></script>
-  <script src="js/materials.js?v=20260702j"></script>
+  <script src="js/config.js?v=20260702k"></script>
+  <script src="js/auth.js?v=20260702k"></script>
+  <script src="js/util.js?v=20260702k"></script>
+  <script src="js/mentor.js?v=20260702k"></script>
+  <script src="js/materials.js?v=20260702k"></script>
 </body>
 </html>
