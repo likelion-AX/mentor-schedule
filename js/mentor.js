@@ -212,6 +212,7 @@ function showDayDetail(dateStr) {
           <span class="badge ${assigned ? "badge-assigned" : "badge-session"}">${assigned ? "내 배정" : "공통"}</span>
         </div>
         <div class="text-caption text-muted">${Util.escapeHtml(s.title)} · ${Util.hhmm(s.start_time)}–${Util.hhmm(s.end_time)}${s.location ? " · " + Util.escapeHtml(s.location) : ""}</div>
+        ${s.memo ? `<div class="text-caption text-muted">📝 ${Util.escapeHtml(s.memo)}</div>` : ""}
       </div>`);
   });
   blks.forEach((b) => {
@@ -263,6 +264,7 @@ async function refreshAll() {
 
   renderCalendar(sessionList, myProgramIds, myBlocks);
   renderMyAssignments(myAssign, sessionsByProgram);
+  renderMyBlocks();
 
   if (IS_MOBILE) showDayDetail(todayISO()); // 폰: 기본으로 오늘 일정 표시
 }
@@ -355,6 +357,44 @@ function renderMyAssignments(myAssign, sessionsByProgram) {
     }));
 }
 
+/** 개인 일정 등록 탭: 다가오는 내 개인 일정 목록(삭제 가능). 구글 가져온 건 읽기 전용. */
+function renderMyBlocks() {
+  const wrap = document.getElementById("myBlockList");
+  if (!wrap) return;
+  const today = todayISO();
+  const blocks = view.blocks
+    .filter((b) => b.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
+  if (!blocks.length) {
+    wrap.innerHTML = `<p class="text-caption text-muted">다가오는 개인 일정이 없어요.</p>`;
+    return;
+  }
+  wrap.innerHTML = blocks
+    .map((b) => {
+      const isG = b.source === "google";
+      return `<div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
+        <div class="row-between">
+          <strong class="text-sm">${Util.fmtDate(b.date)} <span class="text-caption text-muted" style="font-weight: var(--font-weight-regular)">${Util.hhmm(b.start_time)}–${Util.hhmm(b.end_time)}</span></strong>
+          ${isG
+            ? `<span class="text-caption text-muted">🔗 구글</span>`
+            : `<button class="btn btn-ghost btn-sm" data-delblock="${b.id}" style="color:var(--color-info-negative)">삭제</button>`}
+        </div>
+        ${isG
+          ? `<div class="text-caption text-muted">구글에서 가져온 일정 (수정·삭제는 구글에서)</div>`
+          : (b.memo ? `<div class="text-caption text-muted">${Util.escapeHtml(b.memo)}</div>` : "")}
+      </div>`;
+    })
+    .join("");
+  wrap.querySelectorAll("[data-delblock]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      if (!confirm("개인 일정을 삭제할까요?")) return;
+      const { error } = await window.sb.from("mentor_blocks").delete().eq("id", btn.dataset.delblock);
+      if (error) return Util.toast("삭제 실패: " + error.message);
+      Util.toast("삭제했습니다.");
+      refreshAll();
+    }));
+}
+
 async function respond(assignmentId, status) {
   const { error } = await window.sb
     .from("assignments")
@@ -389,31 +429,12 @@ async function onAddBlock(e) {
   refreshAll();
 }
 
-async function onEventClick(info) {
-  const { kind, data } = info.event.extendedProps;
-  // 모바일: 점을 탭해도 그날 일정 패널을 열어줌(일관성)
-  if (IS_MOBILE) {
-    const dayEl = document.querySelector(`.fc-daygrid-day[data-date="${data.date}"]`);
-    selectDay(data.date, dayEl);
-    document.getElementById("dayDetail")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
-  if (kind === "block") {
-    if (data.source === "google") {
-      alert(`구글 캘린더에서 가져온 일정입니다.\n${Util.fmtDate(data.date)} ${Util.hhmm(data.start_time)}–${Util.hhmm(data.end_time)}\n\n수정/삭제는 구글 캘린더에서 하면 다음 동기화 때 반영됩니다.`);
-      return;
-    }
-    if (confirm(`개인 일정을 삭제할까요?\n${Util.fmtDate(data.date)} ${Util.hhmm(data.start_time)}–${Util.hhmm(data.end_time)}`)) {
-      const { error } = await window.sb.from("mentor_blocks").delete().eq("id", data.id);
-      if (error) return Util.toast("삭제 실패: " + error.message);
-      Util.toast("삭제했습니다.");
-      refreshAll();
-    }
-  } else if (kind === "session") {
-    alert(
-      `${data.title}\n고객사: ${data.client}\n${Util.fmtDate(data.date)} ${Util.hhmm(data.start_time)}–${Util.hhmm(data.end_time)}\n장소: ${data.location || "-"}\n필요 멘토: ${data.needed_mentors}명\n상태: ${data.status}\n${data.memo || ""}`
-    );
-  }
+function onEventClick(info) {
+  const { data } = info.event.extendedProps;
+  // 데스크톱·모바일 공통: 브라우저 alert 대신 '그날 일정' 패널을 열어 상세·삭제를 보여줌
+  const dayEl = document.querySelector(`.fc-daygrid-day[data-date="${data.date}"]`);
+  selectDay(data.date, dayEl);
+  document.getElementById("dayDetail")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 init();
