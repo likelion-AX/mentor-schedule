@@ -49,6 +49,10 @@ async function loadGcalImport() {
     .eq("mentor_id", me.id)
     .maybeSingle();
 
+  // '내용 미공유' 예시는 연결 결정 전(미연결)에만 노출 — 연결되면 실제 상태와 겹쳐 지저분해지므로 숨김
+  const eg = document.getElementById("gcalEg");
+  if (eg) eg.style.display = data ? "none" : "";
+
   if (!data) {
     // 미연결 상태
     wrap.innerHTML = `
