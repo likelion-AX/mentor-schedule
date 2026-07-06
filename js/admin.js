@@ -2027,7 +2027,7 @@ function buildScheduleCanvas(p) {
   const pad2 = (n) => String(n).padStart(2, "0");
   ctx.fillStyle = "#9CA3AF";
   ctx.font = SHARE_FONT(500, 15);
-  ctx.fillText(`멘토 일정 관리 · ${now.getFullYear()}.${pad2(now.getMonth() + 1)}.${pad2(now.getDate())} 기준`, PAD, y);
+  ctx.fillText(`교육 운영 관리 · ${now.getFullYear()}.${pad2(now.getMonth() + 1)}.${pad2(now.getDate())} 기준`, PAD, y);
   y += 46;
 
   // 실제 사용한 높이만큼 잘라서 반환

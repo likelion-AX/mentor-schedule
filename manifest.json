@@ -1,6 +1,6 @@
 {
-  "name": "멘토 일정 관리",
-  "short_name": "멘토일정",
+  "name": "교육 운영 관리",
+  "short_name": "교육운영",
   "description": "멘토 가용시간 확인 및 기업 교육 배정 관리",
   "start_url": "./index.html",
   "scope": "./",

@@ -96,7 +96,7 @@ const Util = {
       s.client ? `고객사: ${s.client}` : "",
       `필요 멘토: ${s.needed_mentors}명`,
       s.memo ? `메모: ${s.memo}` : "",
-      "(멘토 일정 관리에서 추가됨)",
+      "(교육 운영 관리에서 추가됨)",
     ].filter(Boolean);
     return lines.join("\n");
   },
