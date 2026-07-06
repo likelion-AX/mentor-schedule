@@ -151,6 +151,48 @@ supabase functions deploy parse-schedule
 
 ---
 
+## 8. (선택) 교육 일정 Slack 알림
+
+교육이 새로 확정되거나 일정이 수정될 때 Slack 채널로 알림을 보냅니다. 두 경로 모두에서 동작합니다:
+- 운영팀이 `admin.html`에서 직접 "+ 새 교육"으로 등록하거나 편집·저장할 때
+- 로컬 `Project_management` 도구가 Pipedrive 확정 일정을 앱에 동기화(push)할 때(별도 저장소, 이 앱과는
+  독립적으로 같은 Slack 웹훅을 사용)
+
+둘 다 **실제로 값이 달라졌을 때만** 알리도록 만들어져 있습니다 — 같은 내용을 다시 저장/동기화해도
+Slack이 재알림하지 않습니다.
+
+```bash
+# 1) Slack 워크스페이스에서 Incoming Webhook 생성 (api.slack.com/apps → Incoming Webhooks)
+#    → 알림 받을 채널 선택 → 웹훅 URL 확보
+
+# 2) 시크릿 등록
+supabase secrets set SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+# 3) 함수 배포
+supabase functions deploy notify-schedule-slack
+```
+
+함수는 호출자의 로그인 토큰으로 **운영팀(admin) 여부를 확인**한 뒤에만 동작합니다(`parse-schedule`과
+동일 방식). 메시지에는 회사명·회차별 날짜/시간/장소·담당 멘토, 그리고 그 교육으로 바로 이동하는
+앱 링크(`admin.html?program=고유ID`)가 포함됩니다.
+
+로컬 `Project_management` 쪽에서도 알림을 보내려면, 그 저장소의 `.mentorapp.json`에
+`slack_webhook_url` 필드로 같은 웹훅 URL을 추가해야 합니다(이 앱의 저장소가 아니므로 별도 설정 필요).
+
+---
+
+## 9. (선택) 교육 합치기 (중복 정리)
+
+회사명 표기 차이(예: "넥센타이어" vs "넥센타이어(주)") 등으로 같은 교육이 두 번 등록되는 걸
+막기 위한 안전망입니다. 추가 설정 없이 기본 내장되어 있습니다.
+
+- **교육 목록** 탭 상단에 회사명·시기가 비슷한 교육이 있으면 "⚠️ 중복 의심 교육" 카드가 자동으로 뜹니다.
+- **🔀 교육 합치기** 버튼으로 언제든 수동으로도 두 교육을 합칠 수 있습니다.
+- 합치면: 원본의 회차 중 대상에 없는 날짜만 옮기고(겹치는 날짜는 대상 것을 유지, 원본은 삭제),
+  배정도 마찬가지로 이동·중복 제거됩니다.
+
+---
+
 ## 사용 흐름
 
 **멘토** (`mentor.html`)

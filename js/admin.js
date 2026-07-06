@@ -101,6 +101,16 @@ async function init() {
     if (e.target.id === "mergeModal") closeMergeModal();
   });
 
+  // 교육 합치기 / 중복 정리
+  document.getElementById("programMergeBtn").addEventListener("click", () => openProgramMergeModal());
+  document.getElementById("pmCancelBtn").addEventListener("click", closeProgramMergeModal);
+  document.getElementById("pmConfirmBtn").addEventListener("click", doProgramMerge);
+  document.getElementById("pmSource").addEventListener("change", updateProgramMergePreview);
+  document.getElementById("pmTarget").addEventListener("change", updateProgramMergePreview);
+  document.getElementById("programMergeModal").addEventListener("click", (e) => {
+    if (e.target.id === "programMergeModal") closeProgramMergeModal();
+  });
+
   // 운영팀 교육자료 추가 모달
   document.getElementById("amCancelBtn").addEventListener("click", closeMaterialModal);
   document.getElementById("adminMaterialForm").addEventListener("submit", saveMaterial);
@@ -202,6 +212,7 @@ async function loadAll() {
 
   renderCalendar();
   renderProgramList();
+  renderProgramDupWarning();
   renderRosters();
   fillProgramDatalist();
   if (state.selectedProgramId && !state.programById[state.selectedProgramId]) state.selectedProgramId = null;
@@ -215,8 +226,21 @@ async function loadAll() {
     const q = new URLSearchParams(location.search).get("img");
     if (q) callScheduleImage(q);
   }
+
+  // 딥링크: admin.html?program=고유ID — Slack 알림 등에서 특정 교육으로 바로 이동
+  if (!urlProgramHandled) {
+    urlProgramHandled = true;
+    const pid = new URLSearchParams(location.search).get("program");
+    if (pid && state.programById[pid]) {
+      state.selectedProgramId = pid;
+      adminTabs.show("schedule");
+      renderBoard();
+      renderProgramList();
+    }
+  }
 }
 let urlImgHandled = false;
+let urlProgramHandled = false;
 
 function buildPrograms() {
   const map = {};
@@ -1335,6 +1359,48 @@ function closeModal() {
   document.getElementById("sessionModal").classList.add("hidden");
 }
 
+/** 편집 저장 시 날짜별로 실제 값이 달라진 회차만 골라낸다 — 재저장(무변경)에도 Slack이 울리는 걸 방지. */
+function computeScheduleChanges(prevByDate, sessions) {
+  const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
+  const changes = [];
+  sorted.forEach((s, i) => {
+    const week = i + 1;
+    const prev = prevByDate[s.date];
+    if (!prev) {
+      changes.push({ week, date: s.date, old: {},
+        new: { start_time: s.start_time, end_time: s.end_time, location: s.location } });
+      return;
+    }
+    if (prev.start_time !== s.start_time || prev.end_time !== s.end_time || (prev.location || "") !== (s.location || "")) {
+      changes.push({
+        week, date: s.date,
+        old: { start_time: prev.start_time, end_time: prev.end_time, location: prev.location },
+        new: { start_time: s.start_time, end_time: s.end_time, location: s.location },
+      });
+    }
+  });
+  return changes;
+}
+
+/** 저장 성공 뒤 비동기로 Slack 알림 — 실패해도 저장 자체는 이미 끝난 뒤라 토스트로만 조용히 알림. */
+async function notifyScheduleSlack(pid, base, event) {
+  if (event.action === "updated" && !event.changes.length) return; // 실제 변경 없음 — 알림 생략
+  const mentorNames = [...assignedFor(pid, "mentor"), ...assignedFor(pid, "facilitator")]
+    .map((a) => a.name);
+  const body = {
+    program_id: pid, company: base.client, course_name: base.title || base.client,
+    action: event.action,
+    ...(event.action === "created" ? { sessions: event.sessions } : { changes: event.changes }),
+    mentor_names: [...new Set(mentorNames)],
+  };
+  try {
+    const { error } = await window.sb.functions.invoke("notify-schedule-slack", { body });
+    if (error) console.error("[Slack 알림 실패]", error);
+  } catch (err) {
+    console.error("[Slack 알림 실패]", err);
+  }
+}
+
 async function saveProgram(e) {
   e.preventDefault();
   const id = document.getElementById("sId").value;
@@ -1364,6 +1430,12 @@ async function saveProgram(e) {
     };
   });
 
+  // Slack 알림용 — 실제 DB 반영 전에, 새로 생기거나 바뀐 회차를 먼저 계산해둔다.
+  const scheduleEvent = id
+    ? { action: "updated", changes: computeScheduleChanges(prevByDate, sessions) }
+    : { action: "created", sessions: [...sessions].sort((a, b) => a.date.localeCompare(b.date))
+        .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location })) };
+
   // 삽입(새 회차) → 편집이면 기존 회차 제거 (배정은 program_id 기준이라 유지)
   let ins = await window.sb.from("education_sessions").insert(sessions);
   if (ins.error && isMissingColumn(ins.error)) {
@@ -1380,6 +1452,7 @@ async function saveProgram(e) {
   Util.toast(id ? `교육 수정 (${sessions.length}회차)` : `교육 생성 (${sessions.length}회차)`);
   closeModal();
   loadAll();
+  notifyScheduleSlack(pid, base, scheduleEvent);
 }
 
 async function deleteProgram() {
@@ -1654,6 +1727,145 @@ async function doMerge() {
     }
     Util.toast("자리를 합쳤습니다.");
     closeMergeModal();
+    loadAll();
+  } catch (err) {
+    Util.toast("합치기 실패: " + (err.message || err));
+  }
+}
+
+// ---------- 교육 합치기 (중복 정리 — 회사명 표기 차이 등으로 따로 등록된 같은 교육) ----------
+/** 회사명이 유사하고(정규화 후 부분일치) 일정 시기가 겹치거나 가까우면(±14일) 중복 의심 */
+function programsLikelyDuplicate(a, b) {
+  if (a.id === b.id) return false;
+  const an = normProgName(a.client || a.title);
+  const bn = normProgName(b.client || b.title);
+  if (!an || !bn) return false;
+  if (an !== bn && !an.includes(bn) && !bn.includes(an)) return false;
+  const aStart = new Date(a.firstDate), aEnd = new Date(a.lastDate);
+  const bStart = new Date(b.firstDate), bEnd = new Date(b.lastDate);
+  const gapMs = Math.max(aStart - bEnd, bStart - aEnd, 0);
+  return gapMs <= 14 * 86400000;
+}
+function findDuplicateProgramSuspects() {
+  const pairs = [];
+  const seen = new Set();
+  for (let i = 0; i < state.programs.length; i++) {
+    for (let j = i + 1; j < state.programs.length; j++) {
+      const a = state.programs[i], b = state.programs[j];
+      if (!programsLikelyDuplicate(a, b)) continue;
+      const key = [a.id, b.id].sort().join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push([a, b]);
+    }
+  }
+  return pairs;
+}
+function renderProgramDupWarning() {
+  const el = document.getElementById("programDupWarning");
+  if (!el) return;
+  const pairs = findDuplicateProgramSuspects();
+  if (!pairs.length) { el.innerHTML = ""; return; }
+  const rows = pairs.map(([a, b]) => `
+    <div class="row-between" style="padding: var(--space-2) 0; border-bottom:1px solid var(--color-border-weak)">
+      <div style="min-width:0">
+        <span class="text-sm">${Util.escapeHtml(progLabel(a))}</span>
+        <span class="text-caption text-muted"> (${programDatesLabel(a)}) ↔ </span>
+        <span class="text-sm">${Util.escapeHtml(progLabel(b))}</span>
+        <span class="text-caption text-muted"> (${programDatesLabel(b)})</span>
+      </div>
+      <button class="btn btn-secondary btn-sm" data-pm-suspect="${a.id}|${b.id}">합치기 검토</button>
+    </div>`).join("");
+  el.innerHTML = `
+    <div class="card" style="margin-bottom: var(--space-3)">
+      <div class="row-between" style="margin-bottom: var(--space-2)">
+        <strong class="text-sm" style="color:var(--color-info-negative)">⚠️ 중복 의심 교육 (${pairs.length})</strong>
+      </div>
+      <p class="text-caption text-muted" style="margin-bottom: var(--space-2)">회사명·시기가 비슷한 교육이 따로 등록돼 있어요. 확인 후 필요하면 합치세요.</p>
+      ${rows}
+    </div>`;
+  el.querySelectorAll("[data-pm-suspect]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const [srcId, tgtId] = b.dataset.pmSuspect.split("|");
+      openProgramMergeModal(srcId, tgtId);
+    }));
+}
+
+function buildProgramMergeOptions() {
+  return state.programs
+    .map((p) => ({ id: p.id, label: `${progLabel(p)} (${programDatesLabel(p)})` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+function openProgramMergeModal(prefillSrc, prefillTgt) {
+  const opts = buildProgramMergeOptions();
+  const optHtml = (sel) => `<option value="">선택…</option>` +
+    opts.map((o) => `<option value="${o.id}"${o.id === sel ? " selected" : ""}>${Util.escapeHtml(o.label)}</option>`).join("");
+  document.getElementById("pmSource").innerHTML = optHtml(prefillSrc || "");
+  document.getElementById("pmTarget").innerHTML = optHtml(prefillTgt || "");
+  document.getElementById("programMergeModal").classList.remove("hidden");
+  updateProgramMergePreview();
+}
+function closeProgramMergeModal() {
+  document.getElementById("programMergeModal").classList.add("hidden");
+}
+function updateProgramMergePreview() {
+  const src = document.getElementById("pmSource").value;
+  const tgt = document.getElementById("pmTarget").value;
+  const el = document.getElementById("pmPreview");
+  if (!src || !tgt) { el.textContent = ""; return; }
+  if (src === tgt) { el.style.color = "var(--color-info-negative)"; el.textContent = "원본과 대상이 같아요."; return; }
+  const srcP = state.programById[src], tgtP = state.programById[tgt];
+  if (!srcP || !tgtP) { el.textContent = ""; return; }
+  const tgtDates = new Set(tgtP.sessions.map((s) => s.date));
+  const moveCount = srcP.sessions.filter((s) => !tgtDates.has(s.date)).length;
+  const dropCount = srcP.sessions.length - moveCount;
+  const srcAssigns = state.assignments.filter((a) => a.program_id === src);
+  // assignments 는 (program_id, person_email) 조합이 유니크 — staff_type은 안 따짐
+  const tgtEmails = new Set(state.assignments.filter((a) => a.program_id === tgt).map((a) => a.person_email));
+  const dupAssign = srcAssigns.filter((a) => tgtEmails.has(a.person_email)).length;
+  el.style.color = "var(--color-fg-assistive)";
+  el.textContent = `→ 회차 ${moveCount}건 이동${dropCount ? ` (겹치는 날짜 ${dropCount}건은 대상 것 유지, 원본 삭제)` : ""}, `
+    + `배정 ${srcAssigns.length - dupAssign}건 이동 · 중복 ${dupAssign}건 제거.`;
+}
+async function doProgramMerge() {
+  const src = document.getElementById("pmSource").value;
+  const tgt = document.getElementById("pmTarget").value;
+  if (!src || !tgt) return Util.toast("합칠 교육과 받을 교육을 모두 고르세요.");
+  if (src === tgt) return Util.toast("원본과 대상이 같습니다.");
+  const srcP = state.programById[src], tgtP = state.programById[tgt];
+  if (!srcP || !tgtP) return Util.toast("교육 정보를 찾을 수 없어요.");
+
+  const tgtDates = new Set(tgtP.sessions.map((s) => s.date));
+  const moveIds = srcP.sessions.filter((s) => !tgtDates.has(s.date)).map((s) => s.id);
+  const dropIds = srcP.sessions.filter((s) => tgtDates.has(s.date)).map((s) => s.id);
+  const srcAssigns = state.assignments.filter((a) => a.program_id === src);
+  const tgtEmails = new Set(state.assignments.filter((a) => a.program_id === tgt).map((a) => a.person_email));
+  const moveAssignIds = srcAssigns.filter((a) => !tgtEmails.has(a.person_email)).map((a) => a.id);
+  const dropAssignIds = srcAssigns.filter((a) => tgtEmails.has(a.person_email)).map((a) => a.id);
+
+  if (!confirm(`'${progLabel(srcP)}'를 '${progLabel(tgtP)}'에 합칠까요?\n`
+    + `(회차 이동 ${moveIds.length}건 · 회차 중복제거 ${dropIds.length}건 · 배정 이동 ${moveAssignIds.length}건 · 배정 중복제거 ${dropAssignIds.length}건)`)) return;
+
+  try {
+    if (moveIds.length) {
+      const r = await window.sb.from("education_sessions").update({ program_id: tgt }).in("id", moveIds);
+      if (r.error) throw r.error;
+    }
+    if (dropIds.length) {
+      const r = await window.sb.from("education_sessions").delete().in("id", dropIds);
+      if (r.error) throw r.error;
+    }
+    if (moveAssignIds.length) {
+      const r = await window.sb.from("assignments").update({ program_id: tgt }).in("id", moveAssignIds);
+      if (r.error) throw r.error;
+    }
+    if (dropAssignIds.length) {
+      const r = await window.sb.from("assignments").delete().in("id", dropAssignIds);
+      if (r.error) throw r.error;
+    }
+    Util.toast("교육을 합쳤습니다.");
+    closeProgramMergeModal();
+    if (state.selectedProgramId === src) state.selectedProgramId = tgt;
     loadAll();
   } catch (err) {
     Util.toast("합치기 실패: " + (err.message || err));

@@ -76,6 +76,7 @@
 
     <!-- ===== 탭: 교육 목록 ===== -->
     <section class="tab-panel" data-panel="programs" hidden>
+      <div id="programDupWarning"></div>
       <div class="card">
         <div class="row-between" style="margin-bottom: var(--space-3)">
           <div class="card-title" style="margin:0">전체 교육 목록</div>
@@ -88,6 +89,7 @@
               <option value="취소">취소</option>
             </select>
             <input class="input" id="programSearch" placeholder="🔍 회사·교육명 검색" style="width: 240px" />
+            <button class="btn btn-secondary btn-sm" id="programMergeBtn" title="비슷한 교육이 중복 등록됐을 때 하나로 합칩니다">🔀 교육 합치기</button>
           </div>
         </div>
         <table class="table compact">
@@ -487,6 +489,30 @@
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" id="mergeCancelBtn">취소</button>
         <button type="button" class="btn btn-primary" id="mergeConfirmBtn">합치기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 교육 합치기 (중복 정리) 모달 -->
+  <div class="modal-backdrop hidden" id="programMergeModal">
+    <div class="modal">
+      <div class="modal-title">교육 합치기 (중복 정리)</div>
+      <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+        같은 교육이 회사명 표기 차이 등으로 따로 등록됐을 때 하나로 합칩니다.
+        원본의 회차·배정이 대상으로 옮겨지고(겹치는 날짜는 대상 것을 유지, 원본은 삭제), 원본 교육은 정리돼요.
+      </p>
+      <div class="field">
+        <label for="pmSource">합칠 교육 (원본 — 정리될 것)</label>
+        <select class="select" id="pmSource"></select>
+      </div>
+      <div class="field">
+        <label for="pmTarget">받을 교육 (대상 — 유지될 것)</label>
+        <select class="select" id="pmTarget"></select>
+      </div>
+      <p class="text-caption" id="pmPreview" style="min-height: 18px"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="pmCancelBtn">취소</button>
+        <button type="button" class="btn btn-primary" id="pmConfirmBtn">합치기</button>
       </div>
     </div>
   </div>
