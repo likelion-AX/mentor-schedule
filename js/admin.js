@@ -1585,7 +1585,9 @@ async function saveProgram(e) {
   closeModal();
   loadAll();
   notifyScheduleSlack(pid, base, scheduleEvent, afterNames);
-  if (toAdd.length || toRemove.length) notifyMentorSlack(pid, base, beforeNames, afterNames);
+  // 새로 등록할 때 멘토를 같이 넣은 경우엔 위 알림에 이미 이름이 들어가 있으니 별도 멘토 알림은 생략(중복 방지).
+  // 기존 교육을 편집하면서 멘토가 바뀐 경우에만 별도로 알린다.
+  if (id && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeNames, afterNames);
 }
 
 async function deleteProgram() {
