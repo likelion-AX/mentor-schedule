@@ -61,7 +61,7 @@
       const session = await Auth.getSession();
       if (session) {
         const profile = await Auth.getProfile();
-        window.location.href = profile.role === "admin" ? "admin.html" : "mentor.html";
+        window.location.href = (profile.role === "admin" ? "admin.html" : "mentor.html") + location.search;
         return;
       }
 
@@ -112,7 +112,7 @@
             if (error) { hint.textContent = "로그인 실패: 이메일/비밀번호를 확인하세요."; return; }
           }
           const profile = await Auth.getProfile();
-          window.location.href = profile.role === "admin" ? "admin.html" : "mentor.html";
+          window.location.href = (profile.role === "admin" ? "admin.html" : "mentor.html") + location.search;
         } finally {
           submitBtn.disabled = false;
         }
