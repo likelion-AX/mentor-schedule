@@ -1203,18 +1203,29 @@ async function assignPerson(programId, email, type) {
   } else if (blockConf) {
     if (!confirm("이 사람은 일부 회차에서 개인 일정과 충돌합니다. 그래도 배정할까요?")) return;
   }
+  // 배정은 이미 구두로 얘기가 끝난 뒤 기록하는 용도라 "제안" 단계 없이 바로 확정.
+  const beforeNames = confirmedAssigneeNames(programId);
   const { error } = await window.sb.from("assignments").insert({
-    program_id: programId, person_email: email, staff_type: type, status: "제안",
+    program_id: programId, person_email: email, staff_type: type, status: "확정",
   });
   if (error) return Util.toast("배정 실패: " + error.message);
-  Util.toast("배정을 제안했습니다. (모든 회차 적용)");
+  Util.toast("배정을 확정했습니다. (모든 회차 적용)");
   loadAll();
+  notifyMentorSlack(programId, p, beforeNames, [...beforeNames, nameOf(email)]);
 }
 async function unassign(id) {
+  const a = state.assignments.find((x) => x.id === id);
+  const pid = a?.program_id;
+  const wasConfirmed = a?.status === "확정";
+  const beforeNames = pid ? confirmedAssigneeNames(pid) : [];
   const { error } = await window.sb.from("assignments").delete().eq("id", id);
   if (error) return Util.toast("해제 실패: " + error.message);
   Util.toast("배정을 해제했습니다.");
   loadAll();
+  if (pid && wasConfirmed) {
+    const afterNames = beforeNames.filter((n) => n !== nameOf(a.person_email));
+    notifyMentorSlack(pid, state.programById[pid], beforeNames, afterNames);
+  }
 }
 async function setAssignStatus(id, status) {
   const { error } = await window.sb.from("assignments").update({ status }).eq("id", id);
@@ -1322,6 +1333,33 @@ function updateRepeatPreview() {
     : "";
 }
 
+/** 확정 배정된 사람 이름 목록(그 프로그램 전체, 멘토+퍼실). Slack 알림 전/후 비교용. */
+function confirmedAssigneeNames(programId) {
+  return state.assignments
+    .filter((a) => a.program_id === programId && a.status === "확정")
+    .map((a) => nameOf(a.person_email));
+}
+
+/** 교육 생성/편집 모달의 멘토·퍼실 체크박스 — 이미 확정 배정된 사람은 미리 체크. */
+function renderStaffPicker(program) {
+  const el = document.getElementById("sStaffPicker");
+  if (!el) return;
+  const confirmedEmails = new Set(
+    program ? state.assignments.filter((a) => a.program_id === program.id && a.status === "확정").map((a) => a.person_email) : []
+  );
+  const section = (type, label) => {
+    const list = rosterOf(type);
+    if (!list.length) return `<p class="text-caption text-muted" style="margin-bottom: var(--space-2)">${label} 명단이 비어 있어요.</p>`;
+    const rows = list.map((p) => `
+      <label class="row" style="gap:6px; padding:2px 0; font-size: var(--font-size-label)">
+        <input type="checkbox" data-staff-email="${Util.escapeHtml(p.email)}" data-staff-type="${type}"${confirmedEmails.has(p.email) ? " checked" : ""} />
+        ${Util.escapeHtml(p.name)}
+      </label>`).join("");
+    return `<div style="margin-bottom: var(--space-2)"><strong class="text-caption">${label}</strong><div>${rows}</div></div>`;
+  };
+  el.innerHTML = section("mentor", "멘토") + section("facilitator", "퍼실리테이터");
+}
+
 function openModal(program, prefillDate) {
   const editing = !!program;
   document.getElementById("modalTitle").textContent = editing ? "교육 편집" : "새 교육";
@@ -1353,6 +1391,8 @@ function openModal(program, prefillDate) {
   document.getElementById("rTimeEnd").value = "13:00";
   document.getElementById("repeatPreview").textContent = "";
 
+  renderStaffPicker(program);
+
   document.getElementById("sessionModal").classList.remove("hidden");
 }
 function closeModal() {
@@ -1382,16 +1422,35 @@ function computeScheduleChanges(prevByDate, sessions) {
   return changes;
 }
 
-/** 저장 성공 뒤 비동기로 Slack 알림 — 실패해도 저장 자체는 이미 끝난 뒤라 토스트로만 조용히 알림. */
-async function notifyScheduleSlack(pid, base, event) {
+/** 저장 성공 뒤 비동기로 Slack 알림 — 실패해도 저장 자체는 이미 끝난 뒤라 토스트로만 조용히 알림.
+ *  mentorNames는 호출부에서 직접 넘겨받는다(loadAll()이 비동기라 state.assignments가 아직
+ *  최신이 아닐 수 있어서, state를 다시 읽지 않고 저장 시점에 계산한 값을 그대로 씀). */
+async function notifyScheduleSlack(pid, base, event, mentorNames) {
   if (event.action === "updated" && !event.changes.length) return; // 실제 변경 없음 — 알림 생략
-  const mentorNames = [...assignedFor(pid, "mentor"), ...assignedFor(pid, "facilitator")]
-    .map((a) => a.name);
   const body = {
     program_id: pid, company: base.client, course_name: base.title || base.client,
     action: event.action,
     ...(event.action === "created" ? { sessions: event.sessions } : { changes: event.changes }),
     mentor_names: [...new Set(mentorNames)],
+  };
+  try {
+    const { error } = await window.sb.functions.invoke("notify-schedule-slack", { body });
+    if (error) console.error("[Slack 알림 실패]", error);
+  } catch (err) {
+    console.error("[Slack 알림 실패]", err);
+  }
+}
+
+/** 담당 멘토·퍼실 구성이 바뀌었을 때 Slack 알림 — 이전에 확정된 사람이 하나도 없었으면 "배정",
+ *  있었는데 바뀌었으면 "변경"으로 구분(일정 알림의 created/updated와 같은 원칙). */
+async function notifyMentorSlack(pid, base, beforeNames, afterNames) {
+  const added = afterNames.filter((n) => !beforeNames.includes(n));
+  const removed = beforeNames.filter((n) => !afterNames.includes(n));
+  if (!added.length && !removed.length) return;
+  const action = beforeNames.length === 0 ? "assigned" : "changed";
+  const body = {
+    program_id: pid, company: base.client, course_name: base.title || base.client,
+    action, mentor_names: [...new Set(afterNames)], added, removed,
   };
   try {
     const { error } = await window.sb.functions.invoke("notify-schedule-slack", { body });
@@ -1436,6 +1495,16 @@ async function saveProgram(e) {
     : { action: "created", sessions: [...sessions].sort((a, b) => a.date.localeCompare(b.date))
         .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location })) };
 
+  // 멘토·퍼실 체크박스 — 모달 닫히기 전에 미리 읽어서 확정 배정 diff를 계산해둔다.
+  const checked = [...document.querySelectorAll("#sStaffPicker input[type=checkbox]:checked")]
+    .map((cb) => ({ email: cb.dataset.staffEmail, type: cb.dataset.staffType }));
+  const beforeAssignments = id ? state.assignments.filter((a) => a.program_id === id && a.status === "확정") : [];
+  const beforeNames = beforeAssignments.map((a) => nameOf(a.person_email));
+  const checkedEmails = new Set(checked.map((c) => c.email));
+  const toAdd = checked.filter((c) => !beforeAssignments.some((a) => a.person_email === c.email));
+  const toRemove = beforeAssignments.filter((a) => !checkedEmails.has(a.person_email));
+  const afterNames = checked.map((c) => nameOf(c.email));
+
   // 삽입(새 회차) → 편집이면 기존 회차 제거 (배정은 program_id 기준이라 유지)
   let ins = await window.sb.from("education_sessions").insert(sessions);
   if (ins.error && isMissingColumn(ins.error)) {
@@ -1448,11 +1517,18 @@ async function saveProgram(e) {
     const oldIds = (state.programById[id]?.sessions || []).map((s) => s.id);
     if (oldIds.length) await window.sb.from("education_sessions").delete().in("id", oldIds);
   }
+  if (toRemove.length) await window.sb.from("assignments").delete().in("id", toRemove.map((a) => a.id));
+  if (toAdd.length) {
+    await window.sb.from("assignments").insert(
+      toAdd.map((c) => ({ program_id: pid, person_email: c.email, staff_type: c.type, status: "확정" })));
+  }
+
   state.selectedProgramId = pid;
   Util.toast(id ? `교육 수정 (${sessions.length}회차)` : `교육 생성 (${sessions.length}회차)`);
   closeModal();
   loadAll();
-  notifyScheduleSlack(pid, base, scheduleEvent);
+  notifyScheduleSlack(pid, base, scheduleEvent, afterNames);
+  if (toAdd.length || toRemove.length) notifyMentorSlack(pid, base, beforeNames, afterNames);
 }
 
 async function deleteProgram() {

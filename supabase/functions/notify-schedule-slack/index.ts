@@ -1,8 +1,11 @@
 // ============================================================================
-// notify-schedule-slack : 운영팀이 앱에서 교육을 생성/수정할 때 Slack에 알림
+// notify-schedule-slack : 운영팀이 앱에서 교육/배정을 저장할 때 Slack에 알림
+//  · 4가지 알림: created(새 일정) / updated(일정 수정) / assigned(멘토 배정,
+//    이 프로그램에 확정 배정이 하나도 없었다가 처음 생김) / changed(멘토 변경,
+//    이미 있던 배정이 추가·교체·제외됨).
 //  · 로컬 Project_management의 push(sync_mentor_app.py)와 짝을 이루는 "앱 저장 경로"용.
 //    로컬 push 쪽은 이미 자기 자신이 직접 Slack 웹훅으로 알림을 보내므로, 이 함수는
-//    오직 admin.html에서 운영팀이 직접 생성/수정 저장할 때만 호출된다.
+//    오직 admin.html에서 운영팀이 직접 저장/배정할 때만 호출된다.
 //  · 실제로 값이 달라졌을 때만 호출하는 판단은 프론트(admin.js)에서 하고, 이 함수는
 //    "포맷해서 보내기"만 담당 — AI/DB 조회 없음, 단순 변환+POST.
 //  · 호출자가 운영팀(admin)인지 로그인 토큰으로 확인(parse-schedule과 동일 패턴).
@@ -48,29 +51,37 @@ const hhmm = (t: string) => (t || "").slice(0, 5);
 
 type Session = { week?: number | string; date: string; start_time: string; end_time: string; location?: string };
 type Change = { week?: number | string; date: string; old: Partial<Session>; new: Session };
+type Action = "created" | "updated" | "assigned" | "changed";
+
+const HEADERS: Record<Action, string> = {
+  created: "📅 새 교육 일정이 확정됐습니다",
+  updated: "✏️ 일정이 수정됐습니다",
+  assigned: "👤 멘토가 배정됐습니다",
+  changed: "🔄 담당 멘토가 변경됐습니다",
+};
 
 function formatMessage(body: {
   program_id: string;
   company: string;
   course_name: string;
-  action: "created" | "updated";
+  action: Action;
   sessions?: Session[];
   changes?: Change[];
   mentor_names?: string[];
+  added?: string[];
+  removed?: string[];
 }): string {
   const label = body.company || body.course_name;
   const link = `${APP_URL}?program=${body.program_id}`;
   const mentorLabel = body.mentor_names?.length ? body.mentor_names.join(", ") : "미정";
-  const lines: string[] = [];
+  const lines: string[] = [`${HEADERS[body.action]} — *[${label}]* ${body.course_name}`];
 
   if (body.action === "created") {
-    lines.push(`📅 *[${label}]* ${body.course_name} — 새 교육 일정이 확정됐습니다`);
     for (const s of [...(body.sessions ?? [])].sort((a, b) => a.date.localeCompare(b.date))) {
       const loc = s.location ? ` · ${s.location}` : "";
       lines.push(`• ${s.week ?? "?"}주차 ${fmtDate(s.date)} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${loc}`);
     }
-  } else {
-    lines.push(`✏️ *[${label}]* ${body.course_name} — 일정이 수정됐습니다`);
+  } else if (body.action === "updated") {
     for (const c of [...(body.changes ?? [])].sort((a, b) => a.date.localeCompare(b.date))) {
       const oldLoc = c.old?.location ? ` · ${c.old.location}` : "";
       const newLoc = c.new.location ? ` · ${c.new.location}` : "";
@@ -79,8 +90,12 @@ function formatMessage(body: {
           `${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${newLoc}`,
       );
     }
+  } else if (body.action === "changed") {
+    for (const n of body.added ?? []) lines.push(`+ ${n} 추가`);
+    for (const n of body.removed ?? []) lines.push(`- ${n} 제외`);
   }
-  lines.push(`담당 멘토: ${mentorLabel}`);
+
+  lines.push(body.action === "changed" ? `담당 멘토(현재): ${mentorLabel}` : `담당 멘토: ${mentorLabel}`);
   lines.push(`🔗 앱에서 확인: ${link}`);
   return lines.join("\n");
 }
@@ -93,8 +108,14 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     if (!body?.program_id || !body?.action) return json({ error: "program_id/action이 필요합니다." }, 400);
+    if (!["created", "updated", "assigned", "changed"].includes(body.action)) {
+      return json({ error: "알 수 없는 action입니다." }, 400);
+    }
     if (body.action === "created" && !body.sessions?.length) return json({ error: "sessions가 필요합니다." }, 400);
     if (body.action === "updated" && !body.changes?.length) return json({ error: "changes가 필요합니다." }, 400);
+    if (body.action === "changed" && !body.added?.length && !body.removed?.length) {
+      return json({ error: "added/removed 중 하나는 필요합니다." }, 400);
+    }
 
     const text = formatMessage(body);
     const r = await fetch(SLACK_WEBHOOK_URL, {
