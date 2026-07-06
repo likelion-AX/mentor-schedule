@@ -283,8 +283,31 @@
         </div>
 
         <div class="field" style="border-top:1px solid var(--color-border-weak); padding-top: var(--space-4)">
-          <label>담당 멘토·퍼실 (선택 — 이미 얘기 끝난 사람 바로 체크하면 확정 배정됩니다)</label>
-          <div id="sStaffPicker" style="margin-top: var(--space-2)"></div>
+          <label>담당 멘토·퍼실 (선택 — 이미 얘기 끝난 사람 검색해서 고르면 확정 배정됩니다)</label>
+          <div class="field-row" style="margin-top: var(--space-2)">
+            <div class="field" style="flex:1">
+              <div class="mat-dropdown" id="sMentorDropdown" style="max-width:none">
+                <button class="mat-dd-trigger" id="sMentorDdTrigger" type="button">
+                  <span id="sMentorDdLabel">멘토 선택</span><span aria-hidden="true">▾</span>
+                </button>
+                <div class="mat-dd-panel hidden" id="sMentorDdPanel">
+                  <input class="input" id="sMentorSearch" placeholder="🔍 멘토 검색" style="margin-bottom: var(--space-2)" />
+                  <div id="sMentorDdList" class="mat-dd-list"></div>
+                </div>
+              </div>
+            </div>
+            <div class="field" style="flex:1">
+              <div class="mat-dropdown" id="sFacDropdown" style="max-width:none">
+                <button class="mat-dd-trigger" id="sFacDdTrigger" type="button">
+                  <span id="sFacDdLabel">퍼실 선택</span><span aria-hidden="true">▾</span>
+                </button>
+                <div class="mat-dd-panel hidden" id="sFacDdPanel">
+                  <input class="input" id="sFacSearch" placeholder="🔍 퍼실 검색" style="margin-bottom: var(--space-2)" />
+                  <div id="sFacDdList" class="mat-dd-list"></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="field">

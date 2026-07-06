@@ -57,6 +57,23 @@ async function init() {
   document.querySelectorAll("#weekdays .wd-btn").forEach((b) =>
     b.addEventListener("click", () => { b.classList.toggle("active"); updateRepeatPreview(); }));
 
+  // 교육 모달의 멘토·퍼실 검색 드롭다운(교육자료 탭 다중선택 드롭다운과 같은 패턴)
+  ["mentor", "facilitator"].forEach((type) => {
+    const trigger = type === "mentor" ? "sMentorDdTrigger" : "sFacDdTrigger";
+    const panel = type === "mentor" ? "sMentorDdPanel" : "sFacDdPanel";
+    document.getElementById(trigger)?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      document.getElementById(panel)?.classList.toggle("hidden");
+    });
+    document.getElementById(STAFF_DD[type].search)?.addEventListener("input", () => renderStaffDdList(type));
+  });
+  document.addEventListener("click", (e) => {
+    ["sMentorDropdown", "sFacDropdown"].forEach((ddId) => {
+      const dd = document.getElementById(ddId);
+      if (dd && !dd.contains(e.target)) dd.querySelector(".mat-dd-panel")?.classList.add("hidden");
+    });
+  });
+
   initSmartAdd();
 
   const imgSearch = document.getElementById("imgSearch");
@@ -1340,24 +1357,62 @@ function confirmedAssigneeNames(programId) {
     .map((a) => nameOf(a.person_email));
 }
 
-/** 교육 생성/편집 모달의 멘토·퍼실 체크박스 — 이미 확정 배정된 사람은 미리 체크. */
+/** 교육 생성/편집 모달의 멘토·퍼실 검색 드롭다운 — 교육자료 탭의 다중선택 드롭다운과 같은 패턴.
+ *  선택 상태는 DOM 체크박스가 아니라 이 Set에 보관 — 검색으로 필터링돼 화면에서 안 보이는
+ *  사람도 선택 상태가 유지되게 하기 위함. */
+let staffPicked = { mentor: new Set(), facilitator: new Set() };
+const STAFF_DD = {
+  mentor: { list: "sMentorDdList", search: "sMentorSearch", label: "sMentorDdLabel", noun: "멘토" },
+  facilitator: { list: "sFacDdList", search: "sFacSearch", label: "sFacDdLabel", noun: "퍼실" },
+};
+
+/** 확정 배정된 사람은 미리 선택된 채로 열림. */
 function renderStaffPicker(program) {
-  const el = document.getElementById("sStaffPicker");
+  staffPicked = { mentor: new Set(), facilitator: new Set() };
+  if (program) {
+    state.assignments
+      .filter((a) => a.program_id === program.id && a.status === "확정")
+      .forEach((a) => staffPicked[a.staff_type]?.add(a.person_email));
+  }
+  ["mentor", "facilitator"].forEach((type) => {
+    const el = document.getElementById(STAFF_DD[type].search);
+    if (el) el.value = "";
+    renderStaffDdList(type);
+    updateStaffDdLabel(type);
+  });
+}
+function renderStaffDdList(type) {
+  const cfg = STAFF_DD[type];
+  const list = document.getElementById(cfg.list);
+  if (!list) return;
+  const all = rosterOf(type);
+  const q = (document.getElementById(cfg.search)?.value || "").trim().toLowerCase();
+  const people = all.filter((p) => !q || p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q));
+  if (!people.length) {
+    list.innerHTML = `<p class="text-caption text-muted" style="padding: var(--space-2)">${
+      all.length ? "검색 결과가 없습니다." : cfg.noun + " 명단이 비어 있어요."}</p>`;
+    return;
+  }
+  const sel = staffPicked[type];
+  list.innerHTML = people.map((p) => `
+    <label class="mat-dd-row">
+      <input type="checkbox" data-staffpick="${Util.escapeHtml(p.email)}"${sel.has(p.email) ? " checked" : ""} />
+      <span class="mat-dd-name">${Util.escapeHtml(p.name)}</span>
+    </label>`).join("");
+  list.querySelectorAll("[data-staffpick]").forEach((cb) =>
+    cb.addEventListener("change", () => {
+      if (cb.checked) sel.add(cb.dataset.staffpick); else sel.delete(cb.dataset.staffpick);
+      updateStaffDdLabel(type);
+    }));
+}
+function updateStaffDdLabel(type) {
+  const cfg = STAFF_DD[type];
+  const el = document.getElementById(cfg.label);
   if (!el) return;
-  const confirmedEmails = new Set(
-    program ? state.assignments.filter((a) => a.program_id === program.id && a.status === "확정").map((a) => a.person_email) : []
-  );
-  const section = (type, label) => {
-    const list = rosterOf(type);
-    if (!list.length) return `<p class="text-caption text-muted" style="margin-bottom: var(--space-2)">${label} 명단이 비어 있어요.</p>`;
-    const rows = list.map((p) => `
-      <label class="row" style="gap:6px; padding:2px 0; font-size: var(--font-size-label)">
-        <input type="checkbox" data-staff-email="${Util.escapeHtml(p.email)}" data-staff-type="${type}"${confirmedEmails.has(p.email) ? " checked" : ""} />
-        ${Util.escapeHtml(p.name)}
-      </label>`).join("");
-    return `<div style="margin-bottom: var(--space-2)"><strong class="text-caption">${label}</strong><div>${rows}</div></div>`;
-  };
-  el.innerHTML = section("mentor", "멘토") + section("facilitator", "퍼실리테이터");
+  const emails = [...staffPicked[type]];
+  if (!emails.length) el.textContent = `${cfg.noun} 선택`;
+  else if (emails.length <= 2) el.textContent = emails.map(nameOf).join(", ");
+  else el.textContent = `${cfg.noun} ${emails.length}명 선택`;
 }
 
 function openModal(program, prefillDate) {
@@ -1495,9 +1550,11 @@ async function saveProgram(e) {
     : { action: "created", sessions: [...sessions].sort((a, b) => a.date.localeCompare(b.date))
         .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location })) };
 
-  // 멘토·퍼실 체크박스 — 모달 닫히기 전에 미리 읽어서 확정 배정 diff를 계산해둔다.
-  const checked = [...document.querySelectorAll("#sStaffPicker input[type=checkbox]:checked")]
-    .map((cb) => ({ email: cb.dataset.staffEmail, type: cb.dataset.staffType }));
+  // 멘토·퍼실 선택(검색 드롭다운, staffPicked) — 확정 배정 diff를 계산해둔다.
+  const checked = [
+    ...[...staffPicked.mentor].map((email) => ({ email, type: "mentor" })),
+    ...[...staffPicked.facilitator].map((email) => ({ email, type: "facilitator" })),
+  ];
   const beforeAssignments = id ? state.assignments.filter((a) => a.program_id === id && a.status === "확정") : [];
   const beforeNames = beforeAssignments.map((a) => nameOf(a.person_email));
   const checkedEmails = new Set(checked.map((c) => c.email));
