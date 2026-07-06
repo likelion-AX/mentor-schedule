@@ -706,7 +706,8 @@ const HUB_FB_CONFIG = {
   appId: "1:748292187430:web:fd0a4cd243d6378f288de7",
 };
 let hubFbReady = null;      // Firebase 초기화+익명로그인 Promise(1회)
-let hubLessonsCache = null; // 미리보기에서 읽어둔 선택 기수의 lessons
+let hubLessonsCache = null; // 미리보기에서 읽어둔 선택 기수의 lessons(링크)
+let hubFilesCache = null;   // 미리보기에서 읽어둔 선택 기수의 files(.md 텍스트)
 
 function hubErr(e) {
   if (!e) return "알 수 없는 오류";
@@ -765,6 +766,7 @@ async function openHubImportModal() {
 function closeHubImportModal() {
   document.getElementById("hubImportModal").classList.add("hidden");
   hubLessonsCache = null;
+  hubFilesCache = null;
 }
 
 // 효과적 기수 ID: '다른 기수 ID' 입력이 있으면 그걸, 없으면 현재 활성 기수
@@ -780,23 +782,22 @@ async function previewHubImport() {
   preview.textContent = "불러오는 중…";
   try {
     const db = await initHubFirebase();
-    const [lessonsSnap, infoSnap] = await Promise.all([
+    const [lessonsSnap, filesSnap, infoSnap] = await Promise.all([
       db.ref("cohorts/" + id + "/lessons").once("value"),
+      db.ref("cohorts/" + id + "/files").once("value"),
       db.ref("cohorts/" + id + "/info").once("value"),
     ]);
     const lessons = lessonsSnap.val() || {};
+    const files = filesSnap.val() || {};
     const cname = infoSnap.val()?.name || id;
     hubLessonsCache = lessons;
-    const weeks = Object.keys(lessons).sort((a, b) => a.localeCompare(b));
-    let total = 0;
-    const parts = weeks.map((w) => {
-      const cnt = Object.values(lessons[w] || {}).filter((v) => v && v.url && v.hub !== false).length;
-      total += cnt;
-      return `${w}주차 ${cnt}개`;
-    });
-    preview.innerHTML = total
-      ? `<b>${Util.escapeHtml(cname)}</b> · 가져올 링크 <b>${total}개</b> (${parts.join(", ")}) — 주차 → 회차로 넣고, 이미 있는 링크는 건너뜁니다.`
-      : `<b>${Util.escapeHtml(cname)}</b> · 가져올 링크가 없습니다.`;
+    hubFilesCache = files;
+    let linkN = 0, fileN = 0;
+    Object.keys(lessons).forEach((w) => { linkN += Object.values(lessons[w] || {}).filter((v) => v && v.url && v.hub !== false).length; });
+    Object.keys(files).forEach((w) => { fileN += Object.values(files[w] || {}).filter((f) => f && f.name).length; });
+    preview.innerHTML = (linkN + fileN)
+      ? `<b>${Util.escapeHtml(cname)}</b> · 링크 <b>${linkN}</b>개 · 파일 <b>${fileN}</b>개 — 주차 → 회차로 넣고, 이미 있는 건 건너뜁니다.`
+      : `<b>${Util.escapeHtml(cname)}</b> · 가져올 자료가 없습니다.`;
   } catch (e) {
     console.error("[허브 가져오기] 미리보기 실패", e);
     preview.textContent = "미리보기 실패: " + hubErr(e);
@@ -806,19 +807,24 @@ async function previewHubImport() {
 async function doHubImport() {
   const pid = document.getElementById("hubProgram").value;
   if (!pid) return Util.toast("넣을 교육을 선택하세요.");
-  if (!hubLessonsCache) return Util.toast("먼저 기수를 선택하세요.");
-  const lessons = hubLessonsCache;
-  // 이미 있는 링크(같은 교육+회차+URL)는 건너뛰기
-  const existing = new Set(
+  if (!hubLessonsCache && !hubFilesCache) return Util.toast("먼저 기수를 선택하세요.");
+  const lessons = hubLessonsCache || {};
+  const files = hubFilesCache || {};
+  // 이미 있는 것 건너뛰기: 링크는 (회차+URL), 파일은 (회차+파일명)
+  const existingLinks = new Set(
     state.materials.filter((m) => m.program_id === pid && m.link_url).map((m) => `${m.week_no || 0}|${m.link_url}`));
+  const existingFiles = new Set(
+    state.materials.filter((m) => m.program_id === pid && !m.link_url && m.file_name).map((m) => `${m.week_no || 0}|${m.file_name}`));
   const seen = new Set();
   const rows = [];
+
+  // 1) 링크(lessons)
   Object.keys(lessons).forEach((w) => {
     const week = parseInt(w, 10) || null;
     Object.values(lessons[w] || {}).forEach((it) => {
       if (!it || !it.url || it.hub === false) return;
-      const key = `${week || 0}|${it.url}`;
-      if (existing.has(key) || seen.has(key)) return;
+      const key = `L|${week || 0}|${it.url}`;
+      if (existingLinks.has(`${week || 0}|${it.url}`) || seen.has(key)) return;
       seen.add(key);
       rows.push({
         owner_id: me.id, program_id: pid, week_no: week,
@@ -828,14 +834,51 @@ async function doHubImport() {
       });
     });
   });
-  if (!rows.length) return Util.toast("새로 가져올 링크가 없습니다(이미 다 있음).");
 
   const btn = document.getElementById("hubImportBtn");
   btn.disabled = true; btn.textContent = "가져오는 중…";
+
+  // 2) 파일(files) — .md 내용을 Storage에 업로드 후 파일 자료로
+  let fileFail = 0;
+  const uploadedPaths = [];
+  for (const w of Object.keys(files)) {
+    const week = parseInt(w, 10) || null;
+    for (const f of Object.values(files[w] || {})) {
+      if (!f || !f.name) continue;
+      const fkey = `F|${week || 0}|${f.name}`;
+      if (existingFiles.has(`${week || 0}|${f.name}`) || seen.has(fkey)) continue;
+      seen.add(fkey);
+      try {
+        const dot = f.name.lastIndexOf(".");
+        const ext = dot >= 0 ? f.name.slice(dot).replace(/[^.\w]/g, "") : ".md";
+        const path = `${me.id}/${uuid()}${ext}`;
+        const blob = new Blob([f.content || ""], { type: "text/markdown;charset=utf-8" });
+        const up = await window.sb.storage.from("materials").upload(path, blob, { contentType: "text/markdown", upsert: false });
+        if (up.error) { fileFail++; continue; }
+        uploadedPaths.push(path);
+        rows.push({
+          owner_id: me.id, program_id: pid, week_no: week,
+          title: f.name, link_url: null,
+          file_path: path, file_name: f.name, file_type: "text/markdown", file_size: blob.size,
+          description: "허브에서 가져옴",
+        });
+      } catch (_) { fileFail++; }
+    }
+  }
+
+  if (!rows.length) {
+    btn.disabled = false; btn.textContent = "가져오기";
+    return Util.toast("새로 가져올 자료가 없습니다(이미 다 있음).");
+  }
   const { error } = await window.sb.from("materials").insert(rows);
   btn.disabled = false; btn.textContent = "가져오기";
-  if (error) return Util.toast("가져오기 실패: " + error.message);
-  Util.toast(`${rows.length}개 링크를 가져왔습니다.`);
+  if (error) {
+    if (uploadedPaths.length) await window.sb.storage.from("materials").remove(uploadedPaths); // 삽입 실패 시 올린 파일 정리
+    return Util.toast("가져오기 실패: " + error.message);
+  }
+  const linkN = rows.filter((r) => r.link_url).length;
+  const fileN = rows.filter((r) => r.file_path).length;
+  Util.toast(`가져왔습니다 · 링크 ${linkN}개 · 파일 ${fileN}개${fileFail ? ` (파일 ${fileFail}개 실패)` : ""}`);
   closeHubImportModal();
   // 가져온 교육을 선택 상태로 반영해 바로 보이게
   state.selectedMatProgramIds = state.selectedMatProgramIds || [];
