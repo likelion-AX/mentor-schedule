@@ -1454,25 +1454,30 @@ function closeModal() {
   document.getElementById("sessionModal").classList.add("hidden");
 }
 
-/** 편집 저장 시 날짜별로 실제 값이 달라진 회차만 골라낸다 — 재저장(무변경)에도 Slack이 울리는 걸 방지. */
-function computeScheduleChanges(prevByDate, sessions) {
+/** 편집 저장 시 실제로 달라진 회차만 골라낸다 — 재저장(무변경)에도 Slack이 울리는 걸 방지.
+ *  회차는 날짜로 매칭하지 않고 **순서(몇 주차인지)**로 이전 회차와 짝지어서 비교한다 — 날짜
+ *  로 매칭하면 "날짜 자체가 바뀐 회차"를 못 찾아서 이전 값이 통째로 비어버리는 문제가 있었음.
+ *  prevSessions는 편집 전 회차 목록(날짜순, state.programById[id].sessions 그대로). */
+function computeScheduleChanges(prevSessions, sessions) {
   const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
   const changes = [];
   sorted.forEach((s, i) => {
     const week = i + 1;
-    const prev = prevByDate[s.date];
+    const prev = prevSessions[i];
+    const newSession = { date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location };
     if (!prev) {
-      changes.push({ week, date: s.date, old: {},
-        new: { start_time: s.start_time, end_time: s.end_time, location: s.location } });
+      changes.push({ week, old: null, new: newSession });
       return;
     }
     // DB의 time 컬럼은 "14:00:00"(초 포함)으로 돌아오고 폼 값은 "14:00"이라, hh:mm까지만 비교한다.
-    if (Util.hhmm(prev.start_time) !== Util.hhmm(s.start_time) || Util.hhmm(prev.end_time) !== Util.hhmm(s.end_time)
-      || (prev.location || "") !== (s.location || "")) {
+    const dateChanged = prev.date !== s.date;
+    const timeChanged = Util.hhmm(prev.start_time) !== Util.hhmm(s.start_time) || Util.hhmm(prev.end_time) !== Util.hhmm(s.end_time);
+    const locChanged = (prev.location || "") !== (s.location || "");
+    if (dateChanged || timeChanged || locChanged) {
       changes.push({
-        week, date: s.date,
-        old: { start_time: prev.start_time, end_time: prev.end_time, location: prev.location },
-        new: { start_time: s.start_time, end_time: s.end_time, location: s.location },
+        week,
+        old: { date: prev.date, start_time: prev.start_time, end_time: prev.end_time, location: prev.location },
+        new: newSession,
       });
     }
   });
@@ -1547,8 +1552,9 @@ async function saveProgram(e) {
   });
 
   // Slack 알림용 — 실제 DB 반영 전에, 새로 생기거나 바뀐 회차를 먼저 계산해둔다.
+  // 회차 매칭은 날짜가 아니라 순서(주차) 기준 — state.programById[id].sessions는 이미 날짜순.
   const scheduleEvent = id
-    ? { action: "updated", changes: computeScheduleChanges(prevByDate, sessions) }
+    ? { action: "updated", changes: computeScheduleChanges(state.programById[id]?.sessions || [], sessions) }
     : { action: "created", sessions: [...sessions].sort((a, b) => a.date.localeCompare(b.date))
         .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location })) };
 

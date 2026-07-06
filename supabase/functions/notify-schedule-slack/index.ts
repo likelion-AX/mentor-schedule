@@ -50,7 +50,9 @@ function fmtDate(d: string): string {
 const hhmm = (t: string) => (t || "").slice(0, 5);
 
 type Session = { week?: number | string; date: string; start_time: string; end_time: string; location?: string };
-type Change = { week?: number | string; date: string; old: Partial<Session>; new: Session };
+// old는 회차가 새로 추가된 경우 null(직전엔 이 순번의 회차 자체가 없었음). 날짜로 매칭하지 않고
+// 순번(week)으로 매칭하므로 old.date !== new.date(날짜 자체가 바뀜)인 경우도 표현 가능.
+type Change = { week?: number | string; old: Session | null; new: Session };
 type Action = "created" | "updated" | "assigned" | "changed";
 
 const HEADERS: Record<Action, string> = {
@@ -82,13 +84,16 @@ function formatMessage(body: {
       lines.push(`• ${s.week ?? "?"}주차 ${fmtDate(s.date)} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${loc}`);
     }
   } else if (body.action === "updated") {
-    for (const c of [...(body.changes ?? [])].sort((a, b) => a.date.localeCompare(b.date))) {
-      const oldLoc = c.old?.location ? ` · ${c.old.location}` : "";
+    for (const c of [...(body.changes ?? [])].sort((a, b) => a.new.date.localeCompare(b.new.date))) {
       const newLoc = c.new.location ? ` · ${c.new.location}` : "";
-      lines.push(
-        `• ${c.week ?? "?"}주차: ${hhmm(c.old?.start_time ?? "")}~${hhmm(c.old?.end_time ?? "")}${oldLoc} → ` +
-          `${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${newLoc}`,
-      );
+      const newStr = `${fmtDate(c.new.date)} ${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${newLoc}`;
+      if (!c.old) {
+        lines.push(`• ${c.week ?? "?"}주차(신규): ${newStr}`);
+      } else {
+        const oldLoc = c.old.location ? ` · ${c.old.location}` : "";
+        const oldStr = `${fmtDate(c.old.date)} ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${oldLoc}`;
+        lines.push(`• ${c.week ?? "?"}주차: ${oldStr} → ${newStr}`);
+      }
     }
   } else if (body.action === "changed") {
     for (const n of body.added ?? []) lines.push(`+ ${n} 추가`);
