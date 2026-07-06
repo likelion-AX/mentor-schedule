@@ -1466,7 +1466,9 @@ function computeScheduleChanges(prevByDate, sessions) {
         new: { start_time: s.start_time, end_time: s.end_time, location: s.location } });
       return;
     }
-    if (prev.start_time !== s.start_time || prev.end_time !== s.end_time || (prev.location || "") !== (s.location || "")) {
+    // DB의 time 컬럼은 "14:00:00"(초 포함)으로 돌아오고 폼 값은 "14:00"이라, hh:mm까지만 비교한다.
+    if (Util.hhmm(prev.start_time) !== Util.hhmm(s.start_time) || Util.hhmm(prev.end_time) !== Util.hhmm(s.end_time)
+      || (prev.location || "") !== (s.location || "")) {
       changes.push({
         week, date: s.date,
         old: { start_time: prev.start_time, end_time: prev.end_time, location: prev.location },
