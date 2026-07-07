@@ -64,6 +64,18 @@ const HEADERS: Record<Action, string> = {
   changed: "🔄 담당 멘토가 변경됐습니다",
 };
 
+/** 회차 목록을 "N주차 날짜 시간 · 장소" 줄들로 — created/updated 둘 다에서 "현재 전체 일정"을 보여줄 때 재사용.
+ *  updated에서도 이걸 넣는 이유: 변경분(diff)만 보면 사람이 이전 일정을 외우고 있어야 맥락이 이해되는데,
+ *  실제로는 아무도 그걸 외우고 있지 않으므로 매번 전체 일정을 함께 보여준다. */
+function sessionLines(sessions: Session[]): string[] {
+  return [...sessions]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((s) => {
+      const loc = s.location ? ` · ${s.location}` : "";
+      return `• ${s.week ?? "?"}주차 ${fmtDate(s.date)} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${loc}`;
+    });
+}
+
 function formatMessage(body: {
   program_id: string;
   company: string;
@@ -81,11 +93,9 @@ function formatMessage(body: {
   const lines: string[] = [`${HEADERS[body.action]} — *[${label}]* ${body.course_name}`];
 
   if (body.action === "created") {
-    for (const s of [...(body.sessions ?? [])].sort((a, b) => a.date.localeCompare(b.date))) {
-      const loc = s.location ? ` · ${s.location}` : "";
-      lines.push(`• ${s.week ?? "?"}주차 ${fmtDate(s.date)} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${loc}`);
-    }
+    lines.push(...sessionLines(body.sessions ?? []));
   } else if (body.action === "updated") {
+    lines.push("변경사항:");
     for (const c of [...(body.changes ?? [])].sort((a, b) => (a.new?.date ?? a.old!.date).localeCompare(b.new?.date ?? b.old!.date))) {
       if (c.old && c.new) {
         // 같은 날짜, 시간·장소만 바뀜
@@ -103,6 +113,8 @@ function formatMessage(body: {
         lines.push(`• (삭제) ${fmtDate(c.old.date)} ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${loc}`);
       }
     }
+    lines.push("", "전체 일정:");
+    lines.push(...sessionLines(body.sessions ?? []));
   } else if (body.action === "changed") {
     for (const n of body.added ?? []) lines.push(`+ ${n} 추가`);
     for (const n of body.removed ?? []) lines.push(`- ${n} 제외`);
@@ -126,6 +138,7 @@ Deno.serve(async (req) => {
     }
     if (body.action === "created" && !body.sessions?.length) return json({ error: "sessions가 필요합니다." }, 400);
     if (body.action === "updated" && !body.changes?.length) return json({ error: "changes가 필요합니다." }, 400);
+    if (body.action === "updated" && !body.sessions?.length) return json({ error: "sessions가 필요합니다." }, 400);
     if (body.action === "changed" && !body.added?.length && !body.removed?.length) {
       return json({ error: "added/removed 중 하나는 필요합니다." }, 400);
     }

@@ -1504,7 +1504,8 @@ async function notifyScheduleSlack(pid, base, event, mentorNames) {
   const body = {
     program_id: pid, company: base.client, course_name: base.title || base.client,
     action: event.action,
-    ...(event.action === "created" ? { sessions: event.sessions } : { changes: event.changes }),
+    sessions: event.sessions,
+    ...(event.action === "updated" ? { changes: event.changes } : {}),
     mentor_names: [...new Set(mentorNames)],
   };
   try {
@@ -1565,10 +1566,13 @@ async function saveProgram(e) {
 
   // Slack 알림용 — 실제 DB 반영 전에, 새로 생기거나 바뀐 회차를 먼저 계산해둔다.
   // 회차 매칭은 날짜가 아니라 순서(주차) 기준 — state.programById[id].sessions는 이미 날짜순.
+  const numberedSessions = [...sessions].sort((a, b) => a.date.localeCompare(b.date))
+    .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location }));
+  // updated에도 전체 일정(numberedSessions)을 함께 보낸다 — 변경분만 보면 사람이 이전 일정을
+  // 외우고 있어야 이해되는데 실제로 아무도 그걸 외우고 있지 않으므로, 항상 현재 전체 일정을 같이 보여준다.
   const scheduleEvent = id
-    ? { action: "updated", changes: computeScheduleChanges(state.programById[id]?.sessions || [], sessions) }
-    : { action: "created", sessions: [...sessions].sort((a, b) => a.date.localeCompare(b.date))
-        .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location })) };
+    ? { action: "updated", changes: computeScheduleChanges(state.programById[id]?.sessions || [], sessions), sessions: numberedSessions }
+    : { action: "created", sessions: numberedSessions };
 
   // 멘토·퍼실 선택(검색 드롭다운, staffPicked) — 확정 배정 diff를 계산해둔다.
   const checked = [
