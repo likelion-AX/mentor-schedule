@@ -1,8 +1,9 @@
 // ============================================================================
 // notify-schedule-slack : 운영팀이 앱에서 교육/배정을 저장할 때 Slack에 알림
-//  · 4가지 알림: created(새 일정) / updated(일정 수정) / assigned(멘토 배정,
+//  · 5가지 알림: created(새 일정) / updated(일정 수정) / assigned(멘토 배정,
 //    이 프로그램에 확정 배정이 하나도 없었다가 처음 생김) / changed(멘토 변경,
-//    이미 있던 배정이 추가·교체·제외됨).
+//    이미 있던 배정이 추가·교체·제외됨) / deleted(교육 삭제 — program_id가 더 이상
+//    없으므로 앱 링크는 안 붙임).
 //  · 로컬 Project_management의 push(sync_mentor_app.py)와 짝을 이루는 "앱 저장 경로"용.
 //    로컬 push 쪽은 이미 자기 자신이 직접 Slack 웹훅으로 알림을 보내므로, 이 함수는
 //    오직 admin.html에서 운영팀이 직접 저장/배정할 때만 호출된다.
@@ -67,13 +68,14 @@ type Session = { week?: number | string; date: string; start_time: string; end_t
 // 둘 다 있으면 같은 회차가 수정된 것(날짜 자체가 바뀐 경우도 포함). admin.js에서 폼 행에 실려있는
 // 원래 DB row id로 짝지어서 넘겨주므로, 이 함수는 매칭 자체는 신경 쓰지 않고 받은 대로 포맷만 한다.
 type Change = { old: Session | null; new: Session | null };
-type Action = "created" | "updated" | "assigned" | "changed";
+type Action = "created" | "updated" | "assigned" | "changed" | "deleted";
 
 const HEADERS: Record<Action, string> = {
   created: "📅 새 교육 일정이 확정됐습니다",
   updated: "✏️ 일정이 수정됐습니다",
   assigned: "👤 멘토가 배정됐습니다",
   changed: "🔄 담당 멘토가 변경됐습니다",
+  deleted: "🗑️ 교육이 삭제됐습니다",
 };
 
 /** 회차 목록을 "N회차 날짜 시간 · 장소" 줄들로 — created/updated 둘 다에서 "현재 전체 일정"을 보여줄 때 재사용.
@@ -136,10 +138,14 @@ function formatMessage(body: {
     }
     lines.push("", "전체 일정:");
     lines.push(...sessionLines(body.sessions ?? []));
+  } else if (body.action === "deleted") {
+    lines.push("전체 일정(삭제 전 마지막 상태):");
+    lines.push(...sessionLines(body.sessions ?? []));
   }
 
   lines.push(body.action === "changed" ? `담당 멘토(현재): ${mentorLabel}` : `담당 멘토: ${mentorLabel}`);
-  lines.push(`🔗 앱에서 확인: ${link}`);
+  // 삭제된 프로그램은 program_id가 더 이상 DB에 없어 앱 링크가 무효하므로 안 붙인다.
+  if (body.action !== "deleted") lines.push(`🔗 앱에서 확인: ${link}`);
   return lines.join("\n");
 }
 
@@ -151,7 +157,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     if (!body?.program_id || !body?.action) return json({ error: "program_id/action이 필요합니다." }, 400);
-    if (!["created", "updated", "assigned", "changed"].includes(body.action)) {
+    if (!["created", "updated", "assigned", "changed", "deleted"].includes(body.action)) {
       return json({ error: "알 수 없는 action입니다." }, 400);
     }
     if (body.action === "created" && !body.sessions?.length) return json({ error: "sessions가 필요합니다." }, 400);
@@ -160,7 +166,7 @@ Deno.serve(async (req) => {
     if (body.action === "changed" && !body.added?.length && !body.removed?.length) {
       return json({ error: "added/removed 중 하나는 필요합니다." }, 400);
     }
-    if ((body.action === "assigned" || body.action === "changed") && !body.sessions?.length) {
+    if ((body.action === "assigned" || body.action === "changed" || body.action === "deleted") && !body.sessions?.length) {
       return json({ error: "sessions가 필요합니다." }, 400);
     }
 

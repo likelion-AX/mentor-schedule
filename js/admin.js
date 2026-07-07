@@ -1654,10 +1654,29 @@ async function saveProgram(e) {
   if (id && !assignErr && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeMentorEmails, afterMentorEmails, numberedSessions);
 }
 
+/** 교육 삭제 Slack 알림 — 삭제된 program_id는 앱에서 더 이상 찾을 수 없으므로 링크는 엣지함수 쪽에서
+ *  아예 안 붙인다(notify-schedule-slack의 action==="deleted" 분기). */
+async function notifyDeletedSlack(pid, base, sessions, mentorNames) {
+  const body = {
+    program_id: pid, company: base.client, course_name: base.title || base.client,
+    action: "deleted", sessions, mentor_names: [...new Set(mentorNames)],
+  };
+  try {
+    const { error } = await window.sb.functions.invoke("notify-schedule-slack", { body });
+    if (error) console.error("[Slack 알림 실패]", error);
+  } catch (err) {
+    console.error("[Slack 알림 실패]", err);
+  }
+}
+
 async function deleteProgram() {
   const id = document.getElementById("sId").value;
   if (!id) return;
   if (!confirm("이 교육과 모든 회차·배정을 삭제할까요?")) return;
+  // 삭제되고 나면 state.programById[id]가 사라지므로, 알림용 스냅샷을 삭제 전에 미리 떠 둔다.
+  const p = state.programById[id];
+  const mentorNames = p ? confirmedAssigneeEmails(id).map(nameOf) : [];
+  const sessionsSnapshot = p ? numberSessionsForSlack(p.sessions) : [];
   await window.sb.from("assignments").delete().eq("program_id", id);
   const { error } = await window.sb.from("education_sessions").delete().eq("program_id", id);
   if (error) return Util.toast("삭제 실패: " + error.message);
@@ -1665,6 +1684,7 @@ async function deleteProgram() {
   Util.toast("교육을 삭제했습니다.");
   closeModal();
   loadAll();
+  if (p && sessionsSnapshot.length) notifyDeletedSlack(id, p, sessionsSnapshot, mentorNames);
 }
 
 // ---------- 명단(초대) ----------
