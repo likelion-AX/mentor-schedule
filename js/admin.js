@@ -1228,7 +1228,8 @@ async function assignPerson(programId, email, type) {
   if (error) return Util.toast("배정 실패: " + error.message);
   Util.toast("배정을 확정했습니다. (모든 회차 적용)");
   loadAll();
-  notifyMentorSlack(programId, p, beforeNames, [...beforeNames, nameOf(email)], numberSessionsForSlack(p.sessions));
+  // 퍼실리테이터 배정은 Slack에 알리지 않음(멘토만 알림 대상).
+  if (type === "mentor") notifyMentorSlack(programId, p, beforeNames, [...beforeNames, nameOf(email)], numberSessionsForSlack(p.sessions));
 }
 async function unassign(id) {
   const a = state.assignments.find((x) => x.id === id);
@@ -1239,7 +1240,7 @@ async function unassign(id) {
   if (error) return Util.toast("해제 실패: " + error.message);
   Util.toast("배정을 해제했습니다.");
   loadAll();
-  if (pid && wasConfirmed) {
+  if (pid && wasConfirmed && a.staff_type === "mentor") {
     const afterNames = beforeNames.filter((n) => n !== nameOf(a.person_email));
     const p = state.programById[pid];
     notifyMentorSlack(pid, p, beforeNames, afterNames, numberSessionsForSlack(p.sessions));
@@ -1351,10 +1352,10 @@ function updateRepeatPreview() {
     : "";
 }
 
-/** 확정 배정된 사람 이름 목록(그 프로그램 전체, 멘토+퍼실). Slack 알림 전/후 비교용. */
+/** 확정 배정된 멘토 이름 목록(퍼실리테이터 제외 — Slack 알림엔 멘토만 노출). Slack 알림 전/후 비교용. */
 function confirmedAssigneeNames(programId) {
   return state.assignments
-    .filter((a) => a.program_id === programId && a.status === "확정")
+    .filter((a) => a.program_id === programId && a.status === "확정" && a.staff_type === "mentor")
     .map((a) => nameOf(a.person_email));
 }
 
@@ -1458,7 +1459,7 @@ function closeModal() {
 /** 편집 저장 시 실제로 달라진 회차만 골라낸다 — 재저장(무변경)에도 Slack이 울리는 걸 방지.
  *  회차엔 안정적인 식별자가 없어서(편집할 때마다 행을 통째로 지우고 새로 넣음) "몇 번째 회차인지
  *  순서"로 짝짓는 건 회차를 추가·삭제하면 뒤 순서가 밀리면서 "관계없는 두 회차가 서로 바뀐 것"
- *  처럼 잘못 보이는 문제가 있었다(예: 2주차 삭제+1개 추가 → 엉뚱하게 3주차가 4주차로 "바뀐 것"처럼 나옴).
+ *  처럼 잘못 보이는 문제가 있었다(예: 2회차 삭제+1개 추가 → 엉뚱하게 3회차가 4회차로 "바뀐 것"처럼 나옴).
  *  그래서 순서 대신 이렇게 매칭한다:
  *   1) 날짜·시간·장소가 완전히 똑같은 회차는 매칭에서 제외(진짜 무변경).
  *   2) 남은 것 중 "같은 날짜"인 게 있으면 그 회차의 시간/장소만 바뀐 것으로 간주(짝지음).
@@ -1497,10 +1498,12 @@ function computeScheduleChanges(prevSessions, sessions) {
   return changes;
 }
 
-/** Slack 알림 본문에 넣을 "N주차 날짜·시간·장소" 목록 — 배정만 바뀐 경우에도 이 교육이 언제인지
- *  맥락 없이는 알 수 없으므로 항상 함께 보낸다. */
+/** Slack 알림 본문에 넣을 "N회차 날짜·시간·장소" 목록 — 배정만 바뀐 경우에도 이 교육이 언제인지
+ *  맥락 없이는 알 수 없으므로 항상 함께 보낸다. "주차"가 아니라 "회차"로 세는 이유: 하루에 회차가
+ *  2개 이상인 교육도 있어서 "주차" 단위로는 안 맞음 — 그냥 순서대로 센 회차 번호. */
 function numberSessionsForSlack(sessions) {
-  return [...sessions].sort((a, b) => a.date.localeCompare(b.date))
+  return [...sessions]
+    .sort((a, b) => a.date.localeCompare(b.date) || Util.hhmm(a.start_time).localeCompare(Util.hhmm(b.start_time)))
     .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location }));
 }
 
@@ -1524,7 +1527,8 @@ async function notifyScheduleSlack(pid, base, event, mentorNames) {
   }
 }
 
-/** 담당 멘토·퍼실 구성이 바뀌었을 때 Slack 알림 — 이전에 확정된 사람이 하나도 없었으면 "배정",
+/** 담당 멘토 구성이 바뀌었을 때 Slack 알림 — 퍼실리테이터는 알림 대상이 아니라 beforeNames/afterNames는
+ *  호출부에서 이미 멘토만 걸러서 넘겨준다. 이전에 확정된 멘토가 하나도 없었으면 "배정",
  *  있었는데 바뀌었으면 "변경"으로 구분(일정 알림의 created/updated와 같은 원칙).
  *  sessions도 함께 보낸다 — 멘토 변경 사실만 보면 이 교육이 언제 하는 건지 몰라서 맥락이 없으므로,
  *  일정 알림(updated)과 같은 이유로 전체 일정을 함께 보여준다. */
@@ -1575,7 +1579,7 @@ async function saveProgram(e) {
   });
 
   // Slack 알림용 — 실제 DB 반영 전에, 새로 생기거나 바뀐 회차를 먼저 계산해둔다.
-  // 회차 매칭은 날짜가 아니라 순서(주차) 기준 — state.programById[id].sessions는 이미 날짜순.
+  // 회차 매칭은 날짜가 아니라 순서(회차) 기준 — state.programById[id].sessions는 이미 날짜순.
   const numberedSessions = numberSessionsForSlack(sessions);
   // updated에도 전체 일정(numberedSessions)을 함께 보낸다 — 변경분만 보면 사람이 이전 일정을
   // 외우고 있어야 이해되는데 실제로 아무도 그걸 외우고 있지 않으므로, 항상 현재 전체 일정을 같이 보여준다.
@@ -1589,11 +1593,12 @@ async function saveProgram(e) {
     ...[...staffPicked.facilitator].map((email) => ({ email, type: "facilitator" })),
   ];
   const beforeAssignments = id ? state.assignments.filter((a) => a.program_id === id && a.status === "확정") : [];
-  const beforeNames = beforeAssignments.map((a) => nameOf(a.person_email));
+  // Slack 알림엔 멘토만 노출 — 퍼실리테이터 배정은 그대로 저장되지만 알림 내용에는 안 넣는다.
+  const beforeNames = beforeAssignments.filter((a) => a.staff_type === "mentor").map((a) => nameOf(a.person_email));
   const checkedEmails = new Set(checked.map((c) => c.email));
   const toAdd = checked.filter((c) => !beforeAssignments.some((a) => a.person_email === c.email));
   const toRemove = beforeAssignments.filter((a) => !checkedEmails.has(a.person_email));
-  const afterNames = checked.map((c) => nameOf(c.email));
+  const afterNames = checked.filter((c) => c.type === "mentor").map((c) => nameOf(c.email));
 
   // 삽입(새 회차) → 편집이면 기존 회차 제거 (배정은 program_id 기준이라 유지)
   let ins = await window.sb.from("education_sessions").insert(sessions);

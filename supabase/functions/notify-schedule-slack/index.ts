@@ -51,7 +51,7 @@ const hhmm = (t: string) => (t || "").slice(0, 5);
 
 type Session = { week?: number | string; date: string; start_time: string; end_time: string; location?: string };
 // old/new 중 하나는 null일 수 있다(둘 다는 아님) — new만 있으면 추가된 회차, old만 있으면 삭제된 회차,
-// 둘 다 있으면 같은 날짜의 시간/장소가 바뀐 회차. 회차엔 안정적인 식별자가 없어서 "몇 주차인지 순서"로
+// 둘 다 있으면 같은 날짜의 시간/장소가 바뀐 회차. 회차엔 안정적인 식별자가 없어서 "몇 번째 회차인지 순서"로
 // 짝짓지 않고 admin.js에서 날짜 기준으로 매칭해 넘겨준다(순서 매칭은 회차 추가/삭제 시 엉뚱한 회차끼리
 // "바뀐 것"처럼 잘못 엮이는 문제가 있었음).
 type Change = { old: Session | null; new: Session | null };
@@ -64,15 +64,16 @@ const HEADERS: Record<Action, string> = {
   changed: "🔄 담당 멘토가 변경됐습니다",
 };
 
-/** 회차 목록을 "N주차 날짜 시간 · 장소" 줄들로 — created/updated 둘 다에서 "현재 전체 일정"을 보여줄 때 재사용.
+/** 회차 목록을 "N회차 날짜 시간 · 장소" 줄들로 — created/updated 둘 다에서 "현재 전체 일정"을 보여줄 때 재사용.
  *  updated에서도 이걸 넣는 이유: 변경분(diff)만 보면 사람이 이전 일정을 외우고 있어야 맥락이 이해되는데,
- *  실제로는 아무도 그걸 외우고 있지 않으므로 매번 전체 일정을 함께 보여준다. */
+ *  실제로는 아무도 그걸 외우고 있지 않으므로 매번 전체 일정을 함께 보여준다.
+ *  "주차"가 아니라 "회차"인 이유: 하루에 회차가 2개 이상인 교육도 있어서 "주차" 단위로는 안 맞음. */
 function sessionLines(sessions: Session[]): string[] {
   return [...sessions]
-    .sort((a, b) => a.date.localeCompare(b.date))
+    .sort((a, b) => a.date.localeCompare(b.date) || hhmm(a.start_time).localeCompare(hhmm(b.start_time)))
     .map((s) => {
       const loc = s.location ? ` · ${s.location}` : "";
-      return `• ${s.week ?? "?"}주차 ${fmtDate(s.date)} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${loc}`;
+      return `• ${s.week ?? "?"}회차 ${fmtDate(s.date)} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${loc}`;
     });
 }
 
