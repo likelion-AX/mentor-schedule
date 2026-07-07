@@ -49,11 +49,23 @@ function fmtDate(d: string): string {
 }
 const hhmm = (t: string) => (t || "").slice(0, 5);
 
+/** Slack mrkdwn 특수문자를 무력화 — 회사명·교육명·멘토 이름·장소처럼 사용자가 자유롭게 입력하는
+ *  텍스트에 *_~`(굵게/기울임/취소선/코드 서식 문자)나 &<>(엔티티 문자)가 섞여 있으면 의도치 않은
+ *  서식이 깨지거나 메시지 뒷부분까지 번질 수 있어 여기서 미리 무력화한다.
+ *  &/</>는 Slack 공식 이스케이프(엔티티). *_~`는 공식 이스케이프가 없어 각 문자 바로 뒤에 폭 없는
+ *  공백(U+200B)을 붙여 서식 페어링이 안 되게 끊는다(사람 눈엔 원래 문자 그대로 보임). */
+function escSlack(s?: string | null): string {
+  return (s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/([*_~`])/g, "$1​");
+}
+
 type Session = { week?: number | string; date: string; start_time: string; end_time: string; location?: string };
 // old/new 중 하나는 null일 수 있다(둘 다는 아님) — new만 있으면 추가된 회차, old만 있으면 삭제된 회차,
-// 둘 다 있으면 같은 날짜의 시간/장소가 바뀐 회차. 회차엔 안정적인 식별자가 없어서 "몇 번째 회차인지 순서"로
-// 짝짓지 않고 admin.js에서 날짜 기준으로 매칭해 넘겨준다(순서 매칭은 회차 추가/삭제 시 엉뚱한 회차끼리
-// "바뀐 것"처럼 잘못 엮이는 문제가 있었음).
+// 둘 다 있으면 같은 회차가 수정된 것(날짜 자체가 바뀐 경우도 포함). admin.js에서 폼 행에 실려있는
+// 원래 DB row id로 짝지어서 넘겨주므로, 이 함수는 매칭 자체는 신경 쓰지 않고 받은 대로 포맷만 한다.
 type Change = { old: Session | null; new: Session | null };
 type Action = "created" | "updated" | "assigned" | "changed";
 
@@ -72,7 +84,7 @@ function sessionLines(sessions: Session[]): string[] {
   return [...sessions]
     .sort((a, b) => a.date.localeCompare(b.date) || hhmm(a.start_time).localeCompare(hhmm(b.start_time)))
     .map((s) => {
-      const loc = s.location ? ` · ${s.location}` : "";
+      const loc = s.location ? ` · ${escSlack(s.location)}` : "";
       return `• ${s.week ?? "?"}회차 ${fmtDate(s.date)} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${loc}`;
     });
 }
@@ -88,10 +100,10 @@ function formatMessage(body: {
   added?: string[];
   removed?: string[];
 }): string {
-  const label = body.company || body.course_name;
+  const label = escSlack(body.company || body.course_name);
   const link = `${APP_URL}?program=${body.program_id}`;
-  const mentorLabel = body.mentor_names?.length ? body.mentor_names.join(", ") : "미정";
-  const lines: string[] = [`${HEADERS[body.action]} — *[${label}]* ${body.course_name}`];
+  const mentorLabel = body.mentor_names?.length ? body.mentor_names.map(escSlack).join(", ") : "미정";
+  const lines: string[] = [`${HEADERS[body.action]} — *[${label}]* ${escSlack(body.course_name)}`];
 
   if (body.action === "created") {
     lines.push(...sessionLines(body.sessions ?? []));
@@ -101,17 +113,17 @@ function formatMessage(body: {
       if (c.old && c.new) {
         // 같은 회차를 그 자리에서 고친 것 — 날짜 자체가 바뀐 경우(스케줄 이동)도 포함되므로
         // 날짜를 한쪽만 보여주지 않고 old/new 양쪽 다 온전히 보여준다.
-        const oldLoc = c.old.location ? ` · ${c.old.location}` : "";
-        const newLoc = c.new.location ? ` · ${c.new.location}` : "";
+        const oldLoc = c.old.location ? ` · ${escSlack(c.old.location)}` : "";
+        const newLoc = c.new.location ? ` · ${escSlack(c.new.location)}` : "";
         lines.push(
           `• ${fmtDate(c.old.date)} ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${oldLoc} → ` +
             `${fmtDate(c.new.date)} ${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${newLoc}`,
         );
       } else if (c.new) {
-        const loc = c.new.location ? ` · ${c.new.location}` : "";
+        const loc = c.new.location ? ` · ${escSlack(c.new.location)}` : "";
         lines.push(`• (추가) ${fmtDate(c.new.date)} ${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${loc}`);
       } else if (c.old) {
-        const loc = c.old.location ? ` · ${c.old.location}` : "";
+        const loc = c.old.location ? ` · ${escSlack(c.old.location)}` : "";
         lines.push(`• (삭제) ${fmtDate(c.old.date)} ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${loc}`);
       }
     }
@@ -119,8 +131,8 @@ function formatMessage(body: {
     lines.push(...sessionLines(body.sessions ?? []));
   } else if (body.action === "assigned" || body.action === "changed") {
     if (body.action === "changed") {
-      for (const n of body.added ?? []) lines.push(`+ ${n} 추가`);
-      for (const n of body.removed ?? []) lines.push(`- ${n} 제외`);
+      for (const n of body.added ?? []) lines.push(`+ ${escSlack(n)} 추가`);
+      for (const n of body.removed ?? []) lines.push(`- ${escSlack(n)} 제외`);
     }
     lines.push("", "전체 일정:");
     lines.push(...sessionLines(body.sessions ?? []));

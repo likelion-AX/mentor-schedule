@@ -1221,7 +1221,7 @@ async function assignPerson(programId, email, type) {
     if (!confirm("이 사람은 일부 회차에서 개인 일정과 충돌합니다. 그래도 배정할까요?")) return;
   }
   // 배정은 이미 구두로 얘기가 끝난 뒤 기록하는 용도라 "제안" 단계 없이 바로 확정.
-  const beforeNames = confirmedAssigneeNames(programId);
+  const beforeEmails = confirmedAssigneeEmails(programId);
   const { error } = await window.sb.from("assignments").insert({
     program_id: programId, person_email: email, staff_type: type, status: "확정",
   });
@@ -1229,21 +1229,21 @@ async function assignPerson(programId, email, type) {
   Util.toast("배정을 확정했습니다. (모든 회차 적용)");
   loadAll();
   // 퍼실리테이터 배정은 Slack에 알리지 않음(멘토만 알림 대상).
-  if (type === "mentor") notifyMentorSlack(programId, p, beforeNames, [...beforeNames, nameOf(email)], numberSessionsForSlack(p.sessions));
+  if (type === "mentor") notifyMentorSlack(programId, p, beforeEmails, [...beforeEmails, email], numberSessionsForSlack(p.sessions));
 }
 async function unassign(id) {
   const a = state.assignments.find((x) => x.id === id);
   const pid = a?.program_id;
   const wasConfirmed = a?.status === "확정";
-  const beforeNames = pid ? confirmedAssigneeNames(pid) : [];
+  const beforeEmails = pid ? confirmedAssigneeEmails(pid) : [];
   const { error } = await window.sb.from("assignments").delete().eq("id", id);
   if (error) return Util.toast("해제 실패: " + error.message);
   Util.toast("배정을 해제했습니다.");
   loadAll();
   if (pid && wasConfirmed && a.staff_type === "mentor") {
-    const afterNames = beforeNames.filter((n) => n !== nameOf(a.person_email));
+    const afterEmails = beforeEmails.filter((e) => e !== a.person_email);
     const p = state.programById[pid];
-    notifyMentorSlack(pid, p, beforeNames, afterNames, numberSessionsForSlack(p.sessions));
+    notifyMentorSlack(pid, p, beforeEmails, afterEmails, numberSessionsForSlack(p.sessions));
   }
 }
 async function setAssignStatus(id, status) {
@@ -1356,11 +1356,13 @@ function updateRepeatPreview() {
     : "";
 }
 
-/** 확정 배정된 멘토 이름 목록(퍼실리테이터 제외 — Slack 알림엔 멘토만 노출). Slack 알림 전/후 비교용. */
-function confirmedAssigneeNames(programId) {
+/** 확정 배정된 멘토 이메일 목록(퍼실리테이터 제외 — Slack 알림엔 멘토만 노출). Slack 알림 전/후 비교용.
+ *  이름이 아니라 이메일로 반환한다 — 표시 이름으로 비교하면 동명이인일 때 실제로는 다른 사람으로
+ *  바뀌었는데도 "변경 없음"으로 잘못 판단해 알림이 조용히 사라지는 문제가 있었다. */
+function confirmedAssigneeEmails(programId) {
   return state.assignments
     .filter((a) => a.program_id === programId && a.status === "확정" && a.staff_type === "mentor")
-    .map((a) => nameOf(a.person_email));
+    .map((a) => a.person_email);
 }
 
 /** 교육 생성/편집 모달의 멘토·퍼실 검색 드롭다운 — 교육자료 탭의 다중선택 드롭다운과 같은 패턴.
@@ -1530,19 +1532,22 @@ async function notifyScheduleSlack(pid, base, event, mentorNames) {
   }
 }
 
-/** 담당 멘토 구성이 바뀌었을 때 Slack 알림 — 퍼실리테이터는 알림 대상이 아니라 beforeNames/afterNames는
+/** 담당 멘토 구성이 바뀌었을 때 Slack 알림 — 퍼실리테이터는 알림 대상이 아니라 beforeEmails/afterEmails는
  *  호출부에서 이미 멘토만 걸러서 넘겨준다. 이전에 확정된 멘토가 하나도 없었으면 "배정",
  *  있었는데 바뀌었으면 "변경"으로 구분(일정 알림의 created/updated와 같은 원칙).
+ *  이메일 기준으로 diff한다(표시 이름 기준이었을 때는 동명이인으로 담당자가 바뀌면 배열 내용이
+ *  똑같아 보여서 "변경 없음"으로 잘못 판단해 알림이 조용히 사라지는 문제가 있었음) — 표시용 이름
+ *  변환은 여기서 body를 만들 때 마지막에 한 번만 한다.
  *  sessions도 함께 보낸다 — 멘토 변경 사실만 보면 이 교육이 언제 하는 건지 몰라서 맥락이 없으므로,
  *  일정 알림(updated)과 같은 이유로 전체 일정을 함께 보여준다. */
-async function notifyMentorSlack(pid, base, beforeNames, afterNames, sessions) {
-  const added = afterNames.filter((n) => !beforeNames.includes(n));
-  const removed = beforeNames.filter((n) => !afterNames.includes(n));
+async function notifyMentorSlack(pid, base, beforeEmails, afterEmails, sessions) {
+  const added = afterEmails.filter((e) => !beforeEmails.includes(e));
+  const removed = beforeEmails.filter((e) => !afterEmails.includes(e));
   if (!added.length && !removed.length) return;
-  const action = beforeNames.length === 0 ? "assigned" : "changed";
+  const action = beforeEmails.length === 0 ? "assigned" : "changed";
   const body = {
     program_id: pid, company: base.client, course_name: base.title || base.client,
-    action, mentor_names: [...new Set(afterNames)], added, removed, sessions,
+    action, mentor_names: [...new Set(afterEmails.map(nameOf))], added: added.map(nameOf), removed: removed.map(nameOf), sessions,
   };
   try {
     const { error } = await window.sb.functions.invoke("notify-schedule-slack", { body });
@@ -1602,11 +1607,12 @@ async function saveProgram(e) {
   ];
   const beforeAssignments = id ? state.assignments.filter((a) => a.program_id === id && a.status === "확정") : [];
   // Slack 알림엔 멘토만 노출 — 퍼실리테이터 배정은 그대로 저장되지만 알림 내용에는 안 넣는다.
-  const beforeNames = beforeAssignments.filter((a) => a.staff_type === "mentor").map((a) => nameOf(a.person_email));
+  // 이메일 기준으로 들고 있는다(표시 이름 기준이면 동명이인일 때 실제 변경을 놓칠 수 있음 — notifyMentorSlack 참고).
+  const beforeMentorEmails = beforeAssignments.filter((a) => a.staff_type === "mentor").map((a) => a.person_email);
   const checkedEmails = new Set(checked.map((c) => c.email));
   const toAdd = checked.filter((c) => !beforeAssignments.some((a) => a.person_email === c.email));
   const toRemove = beforeAssignments.filter((a) => !checkedEmails.has(a.person_email));
-  const afterNames = checked.filter((c) => c.type === "mentor").map((c) => nameOf(c.email));
+  const afterMentorEmails = checked.filter((c) => c.type === "mentor").map((c) => c.email);
 
   // 삽입(새 회차) → 편집이면 기존 회차 제거 (배정은 program_id 기준이라 유지)
   let ins = await window.sb.from("education_sessions").insert(sessions);
@@ -1641,11 +1647,11 @@ async function saveProgram(e) {
   );
   closeModal();
   loadAll();
-  // 배정 반영이 실패했으면 Slack에도 실제 상태(beforeNames)를 알린다 — 성사 안 된 변경을 알리지 않기 위해.
-  notifyScheduleSlack(pid, base, scheduleEvent, assignErr ? beforeNames : afterNames);
+  // 배정 반영이 실패했으면 Slack에도 실제 상태(beforeMentorEmails)를 알린다 — 성사 안 된 변경을 알리지 않기 위해.
+  notifyScheduleSlack(pid, base, scheduleEvent, (assignErr ? beforeMentorEmails : afterMentorEmails).map(nameOf));
   // 새로 등록할 때 멘토를 같이 넣은 경우엔 위 알림에 이미 이름이 들어가 있으니 별도 멘토 알림은 생략(중복 방지).
   // 기존 교육을 편집하면서 멘토가 바뀐 경우에만 별도로 알린다.
-  if (id && !assignErr && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeNames, afterNames, numberedSessions);
+  if (id && !assignErr && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeMentorEmails, afterMentorEmails, numberedSessions);
 }
 
 async function deleteProgram() {
