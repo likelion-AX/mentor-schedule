@@ -115,9 +115,13 @@ function formatMessage(body: {
     }
     lines.push("", "전체 일정:");
     lines.push(...sessionLines(body.sessions ?? []));
-  } else if (body.action === "changed") {
-    for (const n of body.added ?? []) lines.push(`+ ${n} 추가`);
-    for (const n of body.removed ?? []) lines.push(`- ${n} 제외`);
+  } else if (body.action === "assigned" || body.action === "changed") {
+    if (body.action === "changed") {
+      for (const n of body.added ?? []) lines.push(`+ ${n} 추가`);
+      for (const n of body.removed ?? []) lines.push(`- ${n} 제외`);
+    }
+    lines.push("", "전체 일정:");
+    lines.push(...sessionLines(body.sessions ?? []));
   }
 
   lines.push(body.action === "changed" ? `담당 멘토(현재): ${mentorLabel}` : `담당 멘토: ${mentorLabel}`);
@@ -141,6 +145,9 @@ Deno.serve(async (req) => {
     if (body.action === "updated" && !body.sessions?.length) return json({ error: "sessions가 필요합니다." }, 400);
     if (body.action === "changed" && !body.added?.length && !body.removed?.length) {
       return json({ error: "added/removed 중 하나는 필요합니다." }, 400);
+    }
+    if ((body.action === "assigned" || body.action === "changed") && !body.sessions?.length) {
+      return json({ error: "sessions가 필요합니다." }, 400);
     }
 
     const text = formatMessage(body);

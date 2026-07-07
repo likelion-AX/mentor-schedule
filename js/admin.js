@@ -1228,7 +1228,7 @@ async function assignPerson(programId, email, type) {
   if (error) return Util.toast("배정 실패: " + error.message);
   Util.toast("배정을 확정했습니다. (모든 회차 적용)");
   loadAll();
-  notifyMentorSlack(programId, p, beforeNames, [...beforeNames, nameOf(email)]);
+  notifyMentorSlack(programId, p, beforeNames, [...beforeNames, nameOf(email)], numberSessionsForSlack(p.sessions));
 }
 async function unassign(id) {
   const a = state.assignments.find((x) => x.id === id);
@@ -1241,7 +1241,8 @@ async function unassign(id) {
   loadAll();
   if (pid && wasConfirmed) {
     const afterNames = beforeNames.filter((n) => n !== nameOf(a.person_email));
-    notifyMentorSlack(pid, state.programById[pid], beforeNames, afterNames);
+    const p = state.programById[pid];
+    notifyMentorSlack(pid, p, beforeNames, afterNames, numberSessionsForSlack(p.sessions));
   }
 }
 async function setAssignStatus(id, status) {
@@ -1496,6 +1497,13 @@ function computeScheduleChanges(prevSessions, sessions) {
   return changes;
 }
 
+/** Slack 알림 본문에 넣을 "N주차 날짜·시간·장소" 목록 — 배정만 바뀐 경우에도 이 교육이 언제인지
+ *  맥락 없이는 알 수 없으므로 항상 함께 보낸다. */
+function numberSessionsForSlack(sessions) {
+  return [...sessions].sort((a, b) => a.date.localeCompare(b.date))
+    .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location }));
+}
+
 /** 저장 성공 뒤 비동기로 Slack 알림 — 실패해도 저장 자체는 이미 끝난 뒤라 토스트로만 조용히 알림.
  *  mentorNames는 호출부에서 직접 넘겨받는다(loadAll()이 비동기라 state.assignments가 아직
  *  최신이 아닐 수 있어서, state를 다시 읽지 않고 저장 시점에 계산한 값을 그대로 씀). */
@@ -1517,15 +1525,17 @@ async function notifyScheduleSlack(pid, base, event, mentorNames) {
 }
 
 /** 담당 멘토·퍼실 구성이 바뀌었을 때 Slack 알림 — 이전에 확정된 사람이 하나도 없었으면 "배정",
- *  있었는데 바뀌었으면 "변경"으로 구분(일정 알림의 created/updated와 같은 원칙). */
-async function notifyMentorSlack(pid, base, beforeNames, afterNames) {
+ *  있었는데 바뀌었으면 "변경"으로 구분(일정 알림의 created/updated와 같은 원칙).
+ *  sessions도 함께 보낸다 — 멘토 변경 사실만 보면 이 교육이 언제 하는 건지 몰라서 맥락이 없으므로,
+ *  일정 알림(updated)과 같은 이유로 전체 일정을 함께 보여준다. */
+async function notifyMentorSlack(pid, base, beforeNames, afterNames, sessions) {
   const added = afterNames.filter((n) => !beforeNames.includes(n));
   const removed = beforeNames.filter((n) => !afterNames.includes(n));
   if (!added.length && !removed.length) return;
   const action = beforeNames.length === 0 ? "assigned" : "changed";
   const body = {
     program_id: pid, company: base.client, course_name: base.title || base.client,
-    action, mentor_names: [...new Set(afterNames)], added, removed,
+    action, mentor_names: [...new Set(afterNames)], added, removed, sessions,
   };
   try {
     const { error } = await window.sb.functions.invoke("notify-schedule-slack", { body });
@@ -1566,8 +1576,7 @@ async function saveProgram(e) {
 
   // Slack 알림용 — 실제 DB 반영 전에, 새로 생기거나 바뀐 회차를 먼저 계산해둔다.
   // 회차 매칭은 날짜가 아니라 순서(주차) 기준 — state.programById[id].sessions는 이미 날짜순.
-  const numberedSessions = [...sessions].sort((a, b) => a.date.localeCompare(b.date))
-    .map((s, i) => ({ week: i + 1, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location }));
+  const numberedSessions = numberSessionsForSlack(sessions);
   // updated에도 전체 일정(numberedSessions)을 함께 보낸다 — 변경분만 보면 사람이 이전 일정을
   // 외우고 있어야 이해되는데 실제로 아무도 그걸 외우고 있지 않으므로, 항상 현재 전체 일정을 같이 보여준다.
   const scheduleEvent = id
@@ -1623,7 +1632,7 @@ async function saveProgram(e) {
   notifyScheduleSlack(pid, base, scheduleEvent, assignErr ? beforeNames : afterNames);
   // 새로 등록할 때 멘토를 같이 넣은 경우엔 위 알림에 이미 이름이 들어가 있으니 별도 멘토 알림은 생략(중복 방지).
   // 기존 교육을 편집하면서 멘토가 바뀐 경우에만 별도로 알린다.
-  if (id && !assignErr && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeNames, afterNames);
+  if (id && !assignErr && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeNames, afterNames, numberedSessions);
 }
 
 async function deleteProgram() {
