@@ -1365,6 +1365,30 @@ function confirmedAssigneeEmails(programId) {
     .map((a) => a.person_email);
 }
 
+/** 배정 목록을 순서 무관하게 비교할 수 있는 키로 — 동시 편집 감지용. */
+function assignmentsSnapshotKey(rows) {
+  return [...rows].map((a) => `${a.id}|${a.person_email}|${a.staff_type}|${a.status}`).sort().join(",");
+}
+
+/** 내가 이 프로그램을 화면에 띄운 뒤로 다른 사람이 이미 회차·배정을 바꿨는지 저장 직전에 확인한다.
+ *  회차엔 안정적인 식별자가 있어도(id) state.programById는 loadAll() 이후로 시간이 지나면 낡을 수 있는데,
+ *  낡은 스냅샷 기준으로 diff하면 "나는 아무것도 안 바꿨다"고 판단해 무변경 처리되면서, 실제로는 그 사이
+ *  다른 사람이 지운 회차를 내 저장이 그대로 되살리는(부활) 일이 생긴다 — 이때 Slack에도 알림이 안 가서
+ *  아무도 눈치 못 채는 게 제일 큰 문제. 완벽한 잠금은 아니지만(체크와 실제 저장 사이의 짧은 틈은 여전히
+ *  남음), 페이지를 열어둔 채로 방치했다가 저장하는 흔한 경우는 이걸로 대부분 잡아낸다. */
+async function checkStaleBeforeSave(id) {
+  const [freshSessions, freshAssignments] = await Promise.all([
+    window.sb.from("education_sessions").select("id,date,start_time,end_time,location").eq("program_id", id),
+    window.sb.from("assignments").select("id,person_email,staff_type,status").eq("program_id", id),
+  ]);
+  if (freshSessions.error || freshAssignments.error) return null; // 확인 자체가 실패하면 평소처럼 진행(과잉 차단 방지)
+
+  const sessionsStale = computeScheduleChanges(state.programById[id]?.sessions || [], freshSessions.data).length > 0;
+  const prevAssigns = state.assignments.filter((a) => a.program_id === id);
+  const assignmentsStale = assignmentsSnapshotKey(prevAssigns) !== assignmentsSnapshotKey(freshAssignments.data);
+  return sessionsStale || assignmentsStale;
+}
+
 /** 교육 생성/편집 모달의 멘토·퍼실 검색 드롭다운 — 교육자료 탭의 다중선택 드롭다운과 같은 패턴.
  *  선택 상태는 DOM 체크박스가 아니라 이 Set에 보관 — 검색으로 필터링돼 화면에서 안 보이는
  *  사람도 선택 상태가 유지되게 하기 위함. */
@@ -1573,6 +1597,12 @@ async function saveProgram(e) {
   const col = collectSessionRows();
   if (col.error) return Util.toast(col.error);
   if (!col.rows.length) return Util.toast("회차를 1개 이상 추가하세요.");
+  // 편집 중이면, 이 화면을 띄운 뒤로 다른 사람이 이미 저장해서 회차·배정이 바뀌었는지 먼저 확인한다
+  // (그렇지 않으면 낡은 화면 그대로 저장할 때 그 사람의 변경을 조용히 덮어써버림 — 상세 이유는
+  // checkStaleBeforeSave 주석 참고).
+  if (id && (await checkStaleBeforeSave(id))) {
+    return Util.toast("이 교육이 방금 다른 곳에서 수정됐어요. 화면을 새로고침한 뒤 다시 시도해주세요.");
+  }
   const pid = id || uuid();
   // 편집 시 회차를 새로 insert 하므로, 원래 그 행이었던 회차의 수행기록(완료·특이사항)을 이어준다.
   // 날짜로 찾으면 하루에 회차가 2개 이상일 때 엉뚱한 회차의 기록을 가져올 수 있어 id로 찾는다.
