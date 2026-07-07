@@ -1300,10 +1300,14 @@ function sessionLocPlaceholder() {
   const baseLoc = (document.getElementById("sLocation")?.value || "").trim();
   return baseLoc ? `비우면 기본 장소(${baseLoc}) 사용` : "📍 이 회차만 다른 장소 (비우면 기본 장소)";
 }
-function addSessionRow(date = "", start = "10:00", end = "13:00", loc = "") {
+function addSessionRow(date = "", start = "10:00", end = "13:00", loc = "", sessionId = "") {
   const wrap = document.getElementById("sessionRows");
   const row = document.createElement("div");
   row.className = "row session-row";
+  // 기존 회차를 편집 중이면 원래 DB row id를 행에 표시해둔다 — Slack 알림용 diff에서
+  // "이 행이 그 회차가 맞다"를 날짜/시간이 아니라 확실한 식별자로 매칭하기 위함(사용자가 삭제 버튼으로
+  // 지운 게 아니라 그 자리에서 날짜·시간을 직접 고친 거라면 id가 그대로 남아있음).
+  row.dataset.sessionId = sessionId || "";
   row.style.cssText = "gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center";
   row.innerHTML =
     `<input type="date" class="input sr-date" value="${date}" style="flex:1.3; height:38px; min-width:120px" />` +
@@ -1324,7 +1328,7 @@ function collectSessionRows() {
     const loc = r.querySelector(".sr-loc").value.trim();
     if (!date) continue;
     if (!start || !end || end <= start) return { error: "회차 시간을 확인하세요 (종료가 시작보다 늦어야 함)." };
-    out.push({ date, start, end, loc });
+    out.push({ date, start, end, loc, sessionId: r.dataset.sessionId || "" });
   }
   return { rows: out };
 }
@@ -1436,7 +1440,7 @@ function openModal(program, prefillDate) {
   // 기본과 다른 회차만 그 값을 채워 override 로 표시.
   if (editing) program.sessions.forEach((s) =>
     addSessionRow(s.date, Util.hhmm(s.start_time), Util.hhmm(s.end_time),
-      (s.location || "") === (program.location || "") ? "" : (s.location || "")));
+      (s.location || "") === (program.location || "") ? "" : (s.location || ""), s.id));
   else addSessionRow(prefillDate || "", "10:00", "13:00");
 
   // 반복 채우기 박스 초기화
@@ -1457,42 +1461,41 @@ function closeModal() {
 }
 
 /** 편집 저장 시 실제로 달라진 회차만 골라낸다 — 재저장(무변경)에도 Slack이 울리는 걸 방지.
- *  회차엔 안정적인 식별자가 없어서(편집할 때마다 행을 통째로 지우고 새로 넣음) "몇 번째 회차인지
- *  순서"로 짝짓는 건 회차를 추가·삭제하면 뒤 순서가 밀리면서 "관계없는 두 회차가 서로 바뀐 것"
- *  처럼 잘못 보이는 문제가 있었다(예: 2회차 삭제+1개 추가 → 엉뚱하게 3회차가 4회차로 "바뀐 것"처럼 나옴).
- *  그래서 순서 대신 이렇게 매칭한다:
- *   1) 날짜·시간·장소가 완전히 똑같은 회차는 매칭에서 제외(진짜 무변경).
- *   2) 남은 것 중 "같은 날짜"인 게 있으면 그 회차의 시간/장소만 바뀐 것으로 간주(짝지음).
- *   3) 그래도 안 남은 old는 삭제된 회차, 안 남은 new는 새로 추가된 회차로 각각 따로 알린다
- *      (서로 관계없는 삭제+추가를 "바뀜"으로 잘못 엮지 않기 위해 억지로 짝짓지 않음).
- *  prevSessions는 편집 전 회차 목록(state.programById[id].sessions 그대로). */
+ *  전엔 회차에 안정적인 식별자가 없다고 보고 "같은 날짜"로 대충 짝지었는데, 그 날짜에 회차가
+ *  2개 이상이면 엉뚱한 것끼리 짝지어져 "바뀐 것"처럼 잘못 나오는 문제가 있었다. 지금은
+ *  addSessionRow/collectSessionRows가 각 폼 행에 원래 DB row id(sessionId)를 들고 다니게
+ *  해뒀으므로, 그 id로 확실하게 짝짓는다:
+ *   1) old 회차의 id가 폼에 그대로 남아있으면(그 행을 삭제하지 않고 값만 고친 것) 그 짝의
+ *      새 값과 비교 — 내용이 똑같으면 무변경, 다르면 "바뀜"(날짜 자체가 바뀐 경우도 이 안에 포함).
+ *   2) old 회차의 id가 폼에서 사라졌으면(그 행을 ✕로 지운 것) 삭제.
+ *   3) id가 없는(새로 추가한) 폼 행은 전부 신규 추가.
+ *  더 이상 날짜 기준 추측 짝짓기를 하지 않으므로, 서로 무관한 삭제+추가를 "바뀜"으로 잘못
+ *  엮는 문제가 생기지 않는다.
+ *  prevSessions는 편집 전 회차 목록(state.programById[id].sessions 그대로, id 포함). */
 function computeScheduleChanges(prevSessions, sessions) {
-  const norm = (s) => ({ date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location || "" });
+  const norm = (s) => ({ id: s.id || null, date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location || "" });
   // DB의 time 컬럼은 "14:00:00"(초 포함)으로 돌아오고 폼 값은 "14:00"이라, hh:mm까지만 비교한다.
   const keyOf = (s) => `${s.date}|${Util.hhmm(s.start_time)}|${Util.hhmm(s.end_time)}|${s.location || ""}`;
 
-  let oldPool = prevSessions.map(norm);
-  let newPool = [];
-  for (const raw of sessions) {
-    const s = norm(raw);
-    const idx = oldPool.findIndex((p) => keyOf(p) === keyOf(s));
-    if (idx !== -1) oldPool.splice(idx, 1); // 완전히 동일 — 무변경, 양쪽에서 제외
-    else newPool.push(s);
-  }
+  const oldList = prevSessions.map(norm);
+  const newList = sessions.map(norm);
+  const newById = new Map(newList.filter((s) => s.id).map((s) => [s.id, s]));
 
   const changes = [];
-  const leftoverOld = [];
-  for (const prev of oldPool) {
-    const idx = newPool.findIndex((s) => s.date === prev.date);
-    if (idx !== -1) {
-      changes.push({ old: prev, new: newPool[idx] });
-      newPool.splice(idx, 1);
-    } else {
-      leftoverOld.push(prev);
+  const matchedNewIds = new Set();
+  for (const prev of oldList) {
+    const match = newById.get(prev.id);
+    if (!match) {
+      changes.push({ old: prev, new: null }); // 폼에서 그 행 자체가 사라짐 — 삭제
+      continue;
     }
+    matchedNewIds.add(prev.id);
+    if (keyOf(prev) !== keyOf(match)) changes.push({ old: prev, new: match }); // 내용이 바뀜(날짜 포함)
+    // 내용 동일 → 진짜 무변경, changes에 안 넣음
   }
-  for (const prev of leftoverOld) changes.push({ old: prev, new: null }); // 삭제됨
-  for (const s of newPool) changes.push({ old: null, new: s }); // 신규 추가
+  for (const s of newList) {
+    if (!s.id || !matchedNewIds.has(s.id)) changes.push({ old: null, new: s }); // 신규 추가
+  }
 
   changes.sort((a, b) => (a.new?.date || a.old?.date).localeCompare(b.new?.date || b.old?.date));
   return changes;
@@ -1566,25 +1569,30 @@ async function saveProgram(e) {
   if (col.error) return Util.toast(col.error);
   if (!col.rows.length) return Util.toast("회차를 1개 이상 추가하세요.");
   const pid = id || uuid();
-  // 편집 시 회차를 새로 insert 하므로, 같은 날짜의 수행기록(완료·특이사항)은 그대로 이어준다.
-  const prevByDate = {};
-  (state.programById[id]?.sessions || []).forEach((s) => { prevByDate[s.date] = s; });
+  // 편집 시 회차를 새로 insert 하므로, 원래 그 행이었던 회차의 수행기록(완료·특이사항)을 이어준다.
+  // 날짜로 찾으면 하루에 회차가 2개 이상일 때 엉뚱한 회차의 기록을 가져올 수 있어 id로 찾는다.
+  const prevById = {};
+  (state.programById[id]?.sessions || []).forEach((s) => { prevById[s.id] = s; });
   const sessions = col.rows.map((r) => {
-    const prev = prevByDate[r.date];
+    const prev = r.sessionId ? prevById[r.sessionId] : undefined;
     return {
       ...base, date: r.date, start_time: r.start, end_time: r.end, program_id: pid, created_by: me.id,
       location: r.loc || base.location, // 회차별 장소(비우면 기본 장소)
       done: prev?.done ?? false, note: prev?.note ?? "",
     };
   });
+  // computeScheduleChanges용 — DB insert에는 id를 넣으면 안 되므로(기존 행이 아직 안 지워진 상태라
+  // 충돌남) 별도 배열에만 원래 회차 id를 실어 보낸다.
+  const sessionsForDiff = col.rows.map((r) => ({
+    id: r.sessionId || null, date: r.date, start_time: r.start, end_time: r.end, location: r.loc || base.location,
+  }));
 
   // Slack 알림용 — 실제 DB 반영 전에, 새로 생기거나 바뀐 회차를 먼저 계산해둔다.
-  // 회차 매칭은 날짜가 아니라 순서(회차) 기준 — state.programById[id].sessions는 이미 날짜순.
   const numberedSessions = numberSessionsForSlack(sessions);
   // updated에도 전체 일정(numberedSessions)을 함께 보낸다 — 변경분만 보면 사람이 이전 일정을
   // 외우고 있어야 이해되는데 실제로 아무도 그걸 외우고 있지 않으므로, 항상 현재 전체 일정을 같이 보여준다.
   const scheduleEvent = id
-    ? { action: "updated", changes: computeScheduleChanges(state.programById[id]?.sessions || [], sessions), sessions: numberedSessions }
+    ? { action: "updated", changes: computeScheduleChanges(state.programById[id]?.sessions || [], sessionsForDiff), sessions: numberedSessions }
     : { action: "created", sessions: numberedSessions };
 
   // 멘토·퍼실 선택(검색 드롭다운, staffPicked) — 확정 배정 diff를 계산해둔다.

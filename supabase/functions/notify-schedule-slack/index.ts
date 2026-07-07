@@ -99,12 +99,13 @@ function formatMessage(body: {
     lines.push("변경사항:");
     for (const c of [...(body.changes ?? [])].sort((a, b) => (a.new?.date ?? a.old!.date).localeCompare(b.new?.date ?? b.old!.date))) {
       if (c.old && c.new) {
-        // 같은 날짜, 시간·장소만 바뀜
+        // 같은 회차를 그 자리에서 고친 것 — 날짜 자체가 바뀐 경우(스케줄 이동)도 포함되므로
+        // 날짜를 한쪽만 보여주지 않고 old/new 양쪽 다 온전히 보여준다.
         const oldLoc = c.old.location ? ` · ${c.old.location}` : "";
         const newLoc = c.new.location ? ` · ${c.new.location}` : "";
         lines.push(
-          `• ${fmtDate(c.new.date)}: ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${oldLoc} → ` +
-            `${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${newLoc}`,
+          `• ${fmtDate(c.old.date)} ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${oldLoc} → ` +
+            `${fmtDate(c.new.date)} ${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${newLoc}`,
         );
       } else if (c.new) {
         const loc = c.new.location ? ` · ${c.new.location}` : "";
