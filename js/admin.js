@@ -1236,10 +1236,14 @@ async function unassign(id) {
   const pid = a?.program_id;
   const wasConfirmed = a?.status === "확정";
   const beforeEmails = pid ? confirmedAssigneeEmails(pid) : [];
-  const { error } = await window.sb.from("assignments").delete().eq("id", id);
+  // .select()로 실제로 지워진 행을 돌려받는다 — DELETE는 매칭되는 행이 0개여도 에러가 아니라 그냥
+  // 성공으로 오므로, 이걸 안 보면 이미 다른 곳(동시에 같은 배정을 해제한 다른 사람)에서 지워진
+  // 걸 나도 지웠다고 착각해서 "제외" 알림을 중복으로 보내게 된다.
+  const { data, error } = await window.sb.from("assignments").delete().eq("id", id).select();
   if (error) return Util.toast("해제 실패: " + error.message);
-  Util.toast("배정을 해제했습니다.");
   loadAll();
+  if (!data?.length) return Util.toast("이미 다른 곳에서 해제된 배정이에요.");
+  Util.toast("배정을 해제했습니다.");
   if (pid && wasConfirmed && a.staff_type === "mentor") {
     const afterEmails = beforeEmails.filter((e) => e !== a.person_email);
     const p = state.programById[pid];
@@ -1370,23 +1374,40 @@ function assignmentsSnapshotKey(rows) {
   return [...rows].map((a) => `${a.id}|${a.person_email}|${a.staff_type}|${a.status}`).sort().join(",");
 }
 
-/** 내가 이 프로그램을 화면에 띄운 뒤로 다른 사람이 이미 회차·배정을 바꿨는지 저장 직전에 확인한다.
- *  회차엔 안정적인 식별자가 있어도(id) state.programById는 loadAll() 이후로 시간이 지나면 낡을 수 있는데,
- *  낡은 스냅샷 기준으로 diff하면 "나는 아무것도 안 바꿨다"고 판단해 무변경 처리되면서, 실제로는 그 사이
- *  다른 사람이 지운 회차를 내 저장이 그대로 되살리는(부활) 일이 생긴다 — 이때 Slack에도 알림이 안 가서
- *  아무도 눈치 못 채는 게 제일 큰 문제. 완벽한 잠금은 아니지만(체크와 실제 저장 사이의 짧은 틈은 여전히
- *  남음), 페이지를 열어둔 채로 방치했다가 저장하는 흔한 경우는 이걸로 대부분 잡아낸다. */
+/** 내가 이 프로그램을 화면에 띄운 뒤로 다른 사람이 이미 회차·배정·메타데이터(회사명·상태·필요인원·메모)를
+ *  바꿨는지 저장 직전에 확인한다. 회차엔 안정적인 식별자가 있어도(id) state.programById는 loadAll() 이후로
+ *  시간이 지나면 낡을 수 있는데, 낡은 스냅샷 기준으로 diff하면 "나는 아무것도 안 바꿨다"고 판단해 무변경
+ *  처리되면서, 실제로는 그 사이 다른 사람이 지운 회차를 내 저장이 그대로 되살리거나(부활), 다른 사람이
+ *  바꾼 상태값을 내 저장이 예전 값으로 덮어써버리는 일이 생긴다 — 이때 Slack에도 알림이 안 가서 아무도
+ *  눈치 못 채는 게 제일 큰 문제. 완벽한 잠금은 아니지만(체크와 실제 저장 사이의 짧은 틈은 여전히 남음),
+ *  페이지를 열어둔 채로 방치했다가 저장하는 흔한 경우는 이걸로 대부분 잡아낸다.
+ *  장소(location)는 따로 안 본다 — 기본 장소가 바뀌면 그걸 물려받는 회차들의 location 자체가 달라지므로
+ *  회차 diff(computeScheduleChanges)에서 이미 잡힌다(중복 비교 방지). */
 async function checkStaleBeforeSave(id) {
+  const metaCols = "id,date,start_time,end_time,location,client,title,status,needed_mentors,needed_facilitators,memo";
   const [freshSessions, freshAssignments] = await Promise.all([
-    window.sb.from("education_sessions").select("id,date,start_time,end_time,location").eq("program_id", id),
+    window.sb.from("education_sessions").select(metaCols).eq("program_id", id),
     window.sb.from("assignments").select("id,person_email,staff_type,status").eq("program_id", id),
   ]);
   if (freshSessions.error || freshAssignments.error) return null; // 확인 자체가 실패하면 평소처럼 진행(과잉 차단 방지)
 
   const sessionsStale = computeScheduleChanges(state.programById[id]?.sessions || [], freshSessions.data).length > 0;
+
   const prevAssigns = state.assignments.filter((a) => a.program_id === id);
   const assignmentsStale = assignmentsSnapshotKey(prevAssigns) !== assignmentsSnapshotKey(freshAssignments.data);
-  return sessionsStale || assignmentsStale;
+
+  const prevProgram = state.programById[id];
+  const freshMeta = freshSessions.data[0];
+  const metaStale = !!prevProgram && !!freshMeta && (
+    prevProgram.client !== freshMeta.client ||
+    prevProgram.title !== freshMeta.title ||
+    prevProgram.status !== freshMeta.status ||
+    prevProgram.needed_mentors !== freshMeta.needed_mentors ||
+    prevProgram.needed_facilitators !== freshMeta.needed_facilitators ||
+    (prevProgram.memo || "") !== (freshMeta.memo || "")
+  );
+
+  return sessionsStale || assignmentsStale || metaStale;
 }
 
 /** 교육 생성/편집 모달의 멘토·퍼실 검색 드롭다운 — 교육자료 탭의 다중선택 드롭다운과 같은 패턴.
@@ -1678,10 +1699,13 @@ async function saveProgram(e) {
   closeModal();
   loadAll();
   // 배정 반영이 실패했으면 Slack에도 실제 상태(beforeMentorEmails)를 알린다 — 성사 안 된 변경을 알리지 않기 위해.
-  notifyScheduleSlack(pid, base, scheduleEvent, (assignErr ? beforeMentorEmails : afterMentorEmails).map(nameOf));
+  // 두 알림 다 await해서 순서대로 보낸다 — 둘 다 fire-and-forget으로 던지면 응답 속도에 따라 Slack에
+  // 멘토 변경 알림이 일정 알림보다 먼저 도착할 수 있음(모달은 이미 닫혔고 loadAll()도 이미 시작된
+  // 뒤라 await해도 화면 반응성엔 영향 없음).
+  await notifyScheduleSlack(pid, base, scheduleEvent, (assignErr ? beforeMentorEmails : afterMentorEmails).map(nameOf));
   // 새로 등록할 때 멘토를 같이 넣은 경우엔 위 알림에 이미 이름이 들어가 있으니 별도 멘토 알림은 생략(중복 방지).
   // 기존 교육을 편집하면서 멘토가 바뀐 경우에만 별도로 알린다.
-  if (id && !assignErr && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeMentorEmails, afterMentorEmails, numberedSessions);
+  if (id && !assignErr && (toAdd.length || toRemove.length)) await notifyMentorSlack(pid, base, beforeMentorEmails, afterMentorEmails, numberedSessions);
 }
 
 /** 교육 삭제 Slack 알림 — 삭제된 program_id는 앱에서 더 이상 찾을 수 없으므로 링크는 엣지함수 쪽에서
