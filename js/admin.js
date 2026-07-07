@@ -1455,32 +1455,44 @@ function closeModal() {
 }
 
 /** 편집 저장 시 실제로 달라진 회차만 골라낸다 — 재저장(무변경)에도 Slack이 울리는 걸 방지.
- *  회차는 날짜로 매칭하지 않고 **순서(몇 주차인지)**로 이전 회차와 짝지어서 비교한다 — 날짜
- *  로 매칭하면 "날짜 자체가 바뀐 회차"를 못 찾아서 이전 값이 통째로 비어버리는 문제가 있었음.
- *  prevSessions는 편집 전 회차 목록(날짜순, state.programById[id].sessions 그대로). */
+ *  회차엔 안정적인 식별자가 없어서(편집할 때마다 행을 통째로 지우고 새로 넣음) "몇 번째 회차인지
+ *  순서"로 짝짓는 건 회차를 추가·삭제하면 뒤 순서가 밀리면서 "관계없는 두 회차가 서로 바뀐 것"
+ *  처럼 잘못 보이는 문제가 있었다(예: 2주차 삭제+1개 추가 → 엉뚱하게 3주차가 4주차로 "바뀐 것"처럼 나옴).
+ *  그래서 순서 대신 이렇게 매칭한다:
+ *   1) 날짜·시간·장소가 완전히 똑같은 회차는 매칭에서 제외(진짜 무변경).
+ *   2) 남은 것 중 "같은 날짜"인 게 있으면 그 회차의 시간/장소만 바뀐 것으로 간주(짝지음).
+ *   3) 그래도 안 남은 old는 삭제된 회차, 안 남은 new는 새로 추가된 회차로 각각 따로 알린다
+ *      (서로 관계없는 삭제+추가를 "바뀜"으로 잘못 엮지 않기 위해 억지로 짝짓지 않음).
+ *  prevSessions는 편집 전 회차 목록(state.programById[id].sessions 그대로). */
 function computeScheduleChanges(prevSessions, sessions) {
-  const sorted = [...sessions].sort((a, b) => a.date.localeCompare(b.date));
+  const norm = (s) => ({ date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location || "" });
+  // DB의 time 컬럼은 "14:00:00"(초 포함)으로 돌아오고 폼 값은 "14:00"이라, hh:mm까지만 비교한다.
+  const keyOf = (s) => `${s.date}|${Util.hhmm(s.start_time)}|${Util.hhmm(s.end_time)}|${s.location || ""}`;
+
+  let oldPool = prevSessions.map(norm);
+  let newPool = [];
+  for (const raw of sessions) {
+    const s = norm(raw);
+    const idx = oldPool.findIndex((p) => keyOf(p) === keyOf(s));
+    if (idx !== -1) oldPool.splice(idx, 1); // 완전히 동일 — 무변경, 양쪽에서 제외
+    else newPool.push(s);
+  }
+
   const changes = [];
-  sorted.forEach((s, i) => {
-    const week = i + 1;
-    const prev = prevSessions[i];
-    const newSession = { date: s.date, start_time: s.start_time, end_time: s.end_time, location: s.location };
-    if (!prev) {
-      changes.push({ week, old: null, new: newSession });
-      return;
+  const leftoverOld = [];
+  for (const prev of oldPool) {
+    const idx = newPool.findIndex((s) => s.date === prev.date);
+    if (idx !== -1) {
+      changes.push({ old: prev, new: newPool[idx] });
+      newPool.splice(idx, 1);
+    } else {
+      leftoverOld.push(prev);
     }
-    // DB의 time 컬럼은 "14:00:00"(초 포함)으로 돌아오고 폼 값은 "14:00"이라, hh:mm까지만 비교한다.
-    const dateChanged = prev.date !== s.date;
-    const timeChanged = Util.hhmm(prev.start_time) !== Util.hhmm(s.start_time) || Util.hhmm(prev.end_time) !== Util.hhmm(s.end_time);
-    const locChanged = (prev.location || "") !== (s.location || "");
-    if (dateChanged || timeChanged || locChanged) {
-      changes.push({
-        week,
-        old: { date: prev.date, start_time: prev.start_time, end_time: prev.end_time, location: prev.location },
-        new: newSession,
-      });
-    }
-  });
+  }
+  for (const prev of leftoverOld) changes.push({ old: prev, new: null }); // 삭제됨
+  for (const s of newPool) changes.push({ old: null, new: s }); // 신규 추가
+
+  changes.sort((a, b) => (a.new?.date || a.old?.date).localeCompare(b.new?.date || b.old?.date));
   return changes;
 }
 

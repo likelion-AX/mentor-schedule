@@ -50,9 +50,11 @@ function fmtDate(d: string): string {
 const hhmm = (t: string) => (t || "").slice(0, 5);
 
 type Session = { week?: number | string; date: string; start_time: string; end_time: string; location?: string };
-// old는 회차가 새로 추가된 경우 null(직전엔 이 순번의 회차 자체가 없었음). 날짜로 매칭하지 않고
-// 순번(week)으로 매칭하므로 old.date !== new.date(날짜 자체가 바뀜)인 경우도 표현 가능.
-type Change = { week?: number | string; old: Session | null; new: Session };
+// old/new 중 하나는 null일 수 있다(둘 다는 아님) — new만 있으면 추가된 회차, old만 있으면 삭제된 회차,
+// 둘 다 있으면 같은 날짜의 시간/장소가 바뀐 회차. 회차엔 안정적인 식별자가 없어서 "몇 주차인지 순서"로
+// 짝짓지 않고 admin.js에서 날짜 기준으로 매칭해 넘겨준다(순서 매칭은 회차 추가/삭제 시 엉뚱한 회차끼리
+// "바뀐 것"처럼 잘못 엮이는 문제가 있었음).
+type Change = { old: Session | null; new: Session | null };
 type Action = "created" | "updated" | "assigned" | "changed";
 
 const HEADERS: Record<Action, string> = {
@@ -84,15 +86,21 @@ function formatMessage(body: {
       lines.push(`• ${s.week ?? "?"}주차 ${fmtDate(s.date)} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${loc}`);
     }
   } else if (body.action === "updated") {
-    for (const c of [...(body.changes ?? [])].sort((a, b) => a.new.date.localeCompare(b.new.date))) {
-      const newLoc = c.new.location ? ` · ${c.new.location}` : "";
-      const newStr = `${fmtDate(c.new.date)} ${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${newLoc}`;
-      if (!c.old) {
-        lines.push(`• ${c.week ?? "?"}주차(신규): ${newStr}`);
-      } else {
+    for (const c of [...(body.changes ?? [])].sort((a, b) => (a.new?.date ?? a.old!.date).localeCompare(b.new?.date ?? b.old!.date))) {
+      if (c.old && c.new) {
+        // 같은 날짜, 시간·장소만 바뀜
         const oldLoc = c.old.location ? ` · ${c.old.location}` : "";
-        const oldStr = `${fmtDate(c.old.date)} ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${oldLoc}`;
-        lines.push(`• ${c.week ?? "?"}주차: ${oldStr} → ${newStr}`);
+        const newLoc = c.new.location ? ` · ${c.new.location}` : "";
+        lines.push(
+          `• ${fmtDate(c.new.date)}: ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${oldLoc} → ` +
+            `${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${newLoc}`,
+        );
+      } else if (c.new) {
+        const loc = c.new.location ? ` · ${c.new.location}` : "";
+        lines.push(`• (추가) ${fmtDate(c.new.date)} ${hhmm(c.new.start_time)}~${hhmm(c.new.end_time)}${loc}`);
+      } else if (c.old) {
+        const loc = c.old.location ? ` · ${c.old.location}` : "";
+        lines.push(`• (삭제) ${fmtDate(c.old.date)} ${hhmm(c.old.start_time)}~${hhmm(c.old.end_time)}${loc}`);
       }
     }
   } else if (body.action === "changed") {
