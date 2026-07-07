@@ -1598,20 +1598,32 @@ async function saveProgram(e) {
     const oldIds = (state.programById[id]?.sessions || []).map((s) => s.id);
     if (oldIds.length) await window.sb.from("education_sessions").delete().in("id", oldIds);
   }
-  if (toRemove.length) await window.sb.from("assignments").delete().in("id", toRemove.map((a) => a.id));
+  // 배정 반영 실패(예: RLS, 캐시된 구버전 스키마 등)를 조용히 넘기면 성공 토스트가 뜨고 Slack에도
+  // 실제로 반영 안 된 멘토를 "배정됨"으로 잘못 알리게 되므로, 각 결과의 error를 반드시 확인한다.
+  let assignErr = null;
+  if (toRemove.length) {
+    const del = await window.sb.from("assignments").delete().in("id", toRemove.map((a) => a.id));
+    if (del.error) assignErr = del.error;
+  }
   if (toAdd.length) {
-    await window.sb.from("assignments").insert(
+    const add = await window.sb.from("assignments").insert(
       toAdd.map((c) => ({ program_id: pid, person_email: c.email, staff_type: c.type, status: "확정" })));
+    if (add.error) assignErr = add.error;
   }
 
   state.selectedProgramId = pid;
-  Util.toast(id ? `교육 수정 (${sessions.length}회차)` : `교육 생성 (${sessions.length}회차)`);
+  Util.toast(
+    assignErr
+      ? `교육은 저장됐지만 멘토 배정 반영에 실패했습니다: ${assignErr.message}`
+      : id ? `교육 수정 (${sessions.length}회차)` : `교육 생성 (${sessions.length}회차)`
+  );
   closeModal();
   loadAll();
-  notifyScheduleSlack(pid, base, scheduleEvent, afterNames);
+  // 배정 반영이 실패했으면 Slack에도 실제 상태(beforeNames)를 알린다 — 성사 안 된 변경을 알리지 않기 위해.
+  notifyScheduleSlack(pid, base, scheduleEvent, assignErr ? beforeNames : afterNames);
   // 새로 등록할 때 멘토를 같이 넣은 경우엔 위 알림에 이미 이름이 들어가 있으니 별도 멘토 알림은 생략(중복 방지).
   // 기존 교육을 편집하면서 멘토가 바뀐 경우에만 별도로 알린다.
-  if (id && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeNames, afterNames);
+  if (id && !assignErr && (toAdd.length || toRemove.length)) notifyMentorSlack(pid, base, beforeNames, afterNames);
 }
 
 async function deleteProgram() {
