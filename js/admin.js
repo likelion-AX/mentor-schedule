@@ -2065,6 +2065,11 @@ async function doProgramMerge() {
   if (!confirm(`'${progLabel(srcP)}'를 '${progLabel(tgtP)}'에 합칠까요?\n`
     + `(회차 이동 ${moveIds.length}건 · 회차 중복제거 ${dropIds.length}건 · 배정 이동 ${moveAssignIds.length}건 · 배정 중복제거 ${dropAssignIds.length}건)`)) return;
 
+  // 합치기는 결과적으로 원본(src) 프로그램을 없애는 것과 같다(회차가 0개가 돼서 화면에서 사라짐) —
+  // 삭제와 같은 알림을 보내기 위해 DB 반영 전에 스냅샷을 미리 떠 둔다.
+  const srcSessionsSnapshot = numberSessionsForSlack(srcP.sessions);
+  const srcMentorNames = confirmedAssigneeEmails(src).map(nameOf);
+
   try {
     if (moveIds.length) {
       const r = await window.sb.from("education_sessions").update({ program_id: tgt }).in("id", moveIds);
@@ -2086,6 +2091,7 @@ async function doProgramMerge() {
     closeProgramMergeModal();
     if (state.selectedProgramId === src) state.selectedProgramId = tgt;
     loadAll();
+    notifyDeletedSlack(src, srcP, srcSessionsSnapshot, srcMentorNames);
   } catch (err) {
     Util.toast("합치기 실패: " + (err.message || err));
   }
