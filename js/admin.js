@@ -1560,13 +1560,16 @@ function numberSessionsForSlack(sessions) {
 /** 저장 성공 뒤 비동기로 Slack 알림 — 실패해도 저장 자체는 이미 끝난 뒤라 토스트로만 조용히 알림.
  *  mentorNames는 호출부에서 직접 넘겨받는다(loadAll()이 비동기라 state.assignments가 아직
  *  최신이 아닐 수 있어서, state를 다시 읽지 않고 저장 시점에 계산한 값을 그대로 씀). */
-async function notifyScheduleSlack(pid, base, event, mentorNames) {
+async function notifyScheduleSlack(pid, base, event, mentorNames, mentorDiff) {
   if (event.action === "updated" && !event.changes.length) return; // 실제 변경 없음 — 알림 생략
   const body = {
     program_id: pid, company: base.client, course_name: base.title || base.client,
     action: event.action,
     sessions: event.sessions,
     ...(event.action === "updated" ? { changes: event.changes } : {}),
+    // 같은 저장에서 멘토도 바뀌었으면 여기에 실어서 알림 1개로 합친다(일정+멘토를 2개로 안 쪼갬).
+    ...(mentorDiff && (mentorDiff.added.length || mentorDiff.removed.length)
+      ? { added: mentorDiff.added, removed: mentorDiff.removed } : {}),
     mentor_names: [...new Set(mentorNames)],
   };
   try {
@@ -1698,14 +1701,25 @@ async function saveProgram(e) {
   );
   closeModal();
   loadAll();
-  // 배정 반영이 실패했으면 Slack에도 실제 상태(beforeMentorEmails)를 알린다 — 성사 안 된 변경을 알리지 않기 위해.
-  // 두 알림 다 await해서 순서대로 보낸다 — 둘 다 fire-and-forget으로 던지면 응답 속도에 따라 Slack에
-  // 멘토 변경 알림이 일정 알림보다 먼저 도착할 수 있음(모달은 이미 닫혔고 loadAll()도 이미 시작된
-  // 뒤라 await해도 화면 반응성엔 영향 없음).
-  await notifyScheduleSlack(pid, base, scheduleEvent, (assignErr ? beforeMentorEmails : afterMentorEmails).map(nameOf));
-  // 새로 등록할 때 멘토를 같이 넣은 경우엔 위 알림에 이미 이름이 들어가 있으니 별도 멘토 알림은 생략(중복 방지).
-  // 기존 교육을 편집하면서 멘토가 바뀐 경우에만 별도로 알린다.
-  if (id && !assignErr && (toAdd.length || toRemove.length)) await notifyMentorSlack(pid, base, beforeMentorEmails, afterMentorEmails, numberedSessions);
+  // 알림 발송. 편집 중 "일정도 바뀌고 멘토도 바뀐" 경우엔 알림을 2개로 쪼개지 않고 ✏️ 한 개에
+  // 멘토 변경(담당 멘토 변경 섹션)을 함께 실어 보낸다 — 받는 사람이 한 저장에 두 번 울리는 걸 방지.
+  const scheduleFires = scheduleEvent.action === "created" || scheduleEvent.changes.length > 0;
+  const mentorChanged = id && !assignErr && (toAdd.length || toRemove.length);
+  const mentorDiff = {
+    added: afterMentorEmails.filter((e) => !beforeMentorEmails.includes(e)).map(nameOf),
+    removed: beforeMentorEmails.filter((e) => !afterMentorEmails.includes(e)).map(nameOf),
+  };
+
+  if (scheduleFires && mentorChanged && scheduleEvent.action === "updated") {
+    // 일정+멘토 동시 변경 → 합쳐서 1개
+    await notifyScheduleSlack(pid, base, scheduleEvent, afterMentorEmails.map(nameOf), mentorDiff);
+  } else {
+    // 배정 반영이 실패했으면 Slack에도 실제 상태(beforeMentorEmails)를 알린다 — 성사 안 된 변경을 알리지 않기 위해.
+    await notifyScheduleSlack(pid, base, scheduleEvent, (assignErr ? beforeMentorEmails : afterMentorEmails).map(nameOf));
+    // 새로 등록할 때 멘토를 같이 넣은 경우엔 위 알림에 이미 이름이 들어가 있으니 별도 멘토 알림은 생략(중복 방지).
+    // 일정은 안 바뀌고 멘토만 바뀐 경우에만 별도 멘토 알림을 보낸다(일정도 바뀌었으면 위 if에서 합쳐 처리됨).
+    if (mentorChanged) await notifyMentorSlack(pid, base, beforeMentorEmails, afterMentorEmails, numberedSessions);
+  }
 }
 
 /** 교육 삭제 Slack 알림 — 삭제된 program_id는 앱에서 더 이상 찾을 수 없으므로 링크는 엣지함수 쪽에서
@@ -1714,6 +1728,21 @@ async function notifyDeletedSlack(pid, base, sessions, mentorNames) {
   const body = {
     program_id: pid, company: base.client, course_name: base.title || base.client,
     action: "deleted", sessions, mentor_names: [...new Set(mentorNames)],
+  };
+  try {
+    const { error } = await window.sb.functions.invoke("notify-schedule-slack", { body });
+    if (error) console.error("[Slack 알림 실패]", error);
+  } catch (err) {
+    console.error("[Slack 알림 실패]", err);
+  }
+}
+
+/** 교육 합치기 Slack 알림 — "삭제"가 아니라 대상(tgt) 교육으로 흡수된 것이라, 없어졌다는 오해를 막고
+ *  링크는 흡수된 대상 교육을 가리키게 한다(program_id=대상). srcBase는 합쳐진(사라진) 쪽. */
+async function notifyMergedSlack(tgtId, srcBase, tgtLabel, sessions, mentorNames) {
+  const body = {
+    program_id: tgtId, company: srcBase.client, course_name: srcBase.title || srcBase.client,
+    action: "merged", merged_into: tgtLabel, sessions, mentor_names: [...new Set(mentorNames)],
   };
   try {
     const { error } = await window.sb.functions.invoke("notify-schedule-slack", { body });
@@ -2145,7 +2174,8 @@ async function doProgramMerge() {
     closeProgramMergeModal();
     if (state.selectedProgramId === src) state.selectedProgramId = tgt;
     loadAll();
-    notifyDeletedSlack(src, srcP, srcSessionsSnapshot, srcMentorNames);
+    // 삭제가 아니라 tgt로 합쳐진 것 — "🔀 다른 교육에 합쳐졌습니다"로 알리고 링크는 tgt를 가리킴.
+    notifyMergedSlack(tgt, srcP, tgtP.client || tgtP.title, srcSessionsSnapshot, srcMentorNames);
   } catch (err) {
     Util.toast("합치기 실패: " + (err.message || err));
   }
