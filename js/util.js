@@ -25,14 +25,29 @@ const Util = {
     return new Date(dateStr + "T00:00:00").getDay();
   },
 
-  /** 시작/종료 시간 → "3시간", "1시간 30분" 같은 러닝타임 라벨 */
-  durationLabel(start, end) {
+  /** 시작/종료 시간 → 분(정수). 자정을 넘기면 다음날로 본다. */
+  durationMins(start, end) {
     const [sh, sm] = this.hhmm(start).split(":").map(Number);
     const [eh, em] = this.hhmm(end).split(":").map(Number);
     let mins = eh * 60 + em - (sh * 60 + sm);
     if (mins < 0) mins += 24 * 60;
+    return mins;
+  },
+
+  /** 분 → "3시간", "1시간 30분" 같은 라벨 */
+  minsLabel(mins) {
     const h = Math.floor(mins / 60), m = mins % 60;
     return [h ? `${h}시간` : "", m ? `${m}분` : ""].filter(Boolean).join(" ") || "0분";
+  },
+
+  /** 시작/종료 시간 → "3시간", "1시간 30분" 같은 러닝타임 라벨 */
+  durationLabel(start, end) {
+    return this.minsLabel(this.durationMins(start, end));
+  },
+
+  /** 1200000 → "1,200,000원" */
+  won(n) {
+    return Number(n || 0).toLocaleString("ko-KR") + "원";
   },
 
   /** 두 시간 구간이 겹치는지 (같은 날짜 가정). [s,e) 반열린 구간. */

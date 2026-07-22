@@ -242,10 +242,11 @@ function showDayDetail(dateStr) {
 }
 
 async function refreshAll() {
-  const [sessions, assignments, blocks] = await Promise.all([
+  const [sessions, assignments, blocks, assignSessions] = await Promise.all([
     window.sb.from("education_sessions").select("*").order("date"),
     window.sb.from("assignments").select("*").eq("person_email", me.email),
     window.sb.from("mentor_blocks").select("*").order("date"),
+    window.sb.from("assignment_sessions").select("*"), // RLS가 본인 배정 것만 돌려준다
   ]);
 
   if (sessions.error) return Util.toast("세션 로드 실패: " + sessions.error.message);
@@ -255,6 +256,13 @@ async function refreshAll() {
   const myBlocks = blocks.data || [];
   const myProgramIds = new Set(myAssign.map((a) => a.program_id));
 
+  // 배정별 참여 회차. session-assign.sql 실행 전이면 조용히 빈 목록 —
+  // 그러면 "행 없음 = 전 회차 참여" 규약대로 마이그레이션 전과 동일하게 동작한다.
+  const assignSessionIds = {}; // assignment_id → Set(session_id)
+  (assignSessions.error ? [] : (assignSessions.data || [])).forEach((x) => {
+    (assignSessionIds[x.assignment_id] ||= new Set()).add(x.session_id);
+  });
+
   // 교육(프로그램)별로 회차 묶기
   const sessionsByProgram = {};
   sessionList.forEach((s) => (sessionsByProgram[s.program_id] ||= []).push(s));
@@ -263,7 +271,7 @@ async function refreshAll() {
   view = { sessions: sessionList, blocks: myBlocks, myProgramIds };
 
   renderCalendar(sessionList, myProgramIds, myBlocks);
-  renderMyAssignments(myAssign, sessionsByProgram);
+  renderMyAssignments(myAssign, sessionsByProgram, assignSessionIds);
 
   if (IS_MOBILE) showDayDetail(todayISO()); // 폰: 기본으로 오늘 일정 표시
 }
@@ -303,7 +311,7 @@ function datesSummary(sess) {
   return `${sess.length}회 · ${head}${sess.length > 4 ? " …" : ""}`;
 }
 
-function renderMyAssignments(myAssign, sessionsByProgram) {
+function renderMyAssignments(myAssign, sessionsByProgram, assignSessionIds = {}) {
   const wrap = document.getElementById("myAssignments");
   if (!myAssign.length) {
     wrap.innerHTML = `<p class="text-caption text-muted">아직 배정된 교육이 없습니다.</p>`;
@@ -319,6 +327,22 @@ function renderMyAssignments(myAssign, sessionsByProgram) {
       const rep = sess[0];
       const canRespond = a.status === "제안";
       const typeLabel = a.staff_type === "facilitator" ? "퍼실리테이터" : "멘토";
+      // 내가 실제로 참여하는 회차 — 행이 없으면 전 회차(session-assign.sql 규약).
+      const myIds = assignSessionIds[a.id];
+      const mySess = myIds && myIds.size ? sess.filter((s) => myIds.has(s.id)) : sess;
+      // 강사료 — 본인 배정 행에만 들어있고(RLS), 단가가 정해진 경우에만 보여준다.
+      // 반드시 "참여 회차"로만 계산한다 — 교육 전체로 계산하면 일부만 참여하는 사람에게
+      // 실제보다 큰 금액이 표시된다.
+      const paidMins = mySess.reduce(
+        (sum, s) => sum + Math.max(0, Util.durationMins(s.start_time, s.end_time) - (s.break_mins || 0)), 0);
+      const partTxt = mySess.length < sess.length ? ` · 전체 ${sess.length}회차 중 ${mySess.length}회차 참여` : "";
+      const feeLine = a.fee_per_hour
+        ? `<div class="text-caption" style="margin-top:6px; color:var(--color-fg-normal)">
+             💰 강사료 <b>${Util.won(Math.round((paidMins / 60) * a.fee_per_hour))}</b>
+             <span class="text-muted">(시간당 ${Util.won(a.fee_per_hour)} × ${Util.minsLabel(paidMins)} · 세전${partTxt})</span>
+             ${a.fee_note ? `<br><span class="text-muted">${Util.escapeHtml(a.fee_note)}</span>` : ""}
+           </div>`
+        : "";
       const calBtns = sess.length === 1
         ? `<a class="btn btn-ghost btn-sm" href="${Util.gcalUrl(rep)}" target="_blank" rel="noopener">📅 구글</a>
            <button class="btn btn-ghost btn-sm" data-ics="${a.program_id}">⬇ .ics</button>`
@@ -331,6 +355,7 @@ function renderMyAssignments(myAssign, sessionsByProgram) {
           </div>
           <div class="text-caption text-muted">${Util.escapeHtml(rep.title)} · ${typeLabel}</div>
           <div class="text-caption text-muted">${datesSummary(sess)} · ${Util.hhmm(rep.start_time)}–${Util.hhmm(rep.end_time)}</div>
+          ${feeLine}
           ${
             canRespond
               ? `<div class="row mt-4" style="gap: var(--space-2)">

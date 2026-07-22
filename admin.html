@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 교육 운영 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260707b1" />
-  <link rel="stylesheet" href="css/app.css?v=20260707b1" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260721f1" />
+  <link rel="stylesheet" href="css/app.css?v=20260721f1" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -122,7 +122,7 @@
           </p>
           <input class="input" id="mentorSearch" placeholder="🔍 이름·이메일 검색" style="margin-bottom: var(--space-3)" />
           <table class="table">
-            <thead><tr><th>이름</th><th>이메일</th><th>상태</th><th></th></tr></thead>
+            <thead><tr><th>이름</th><th>이메일</th><th>기본 시급</th><th>상태</th><th></th></tr></thead>
             <tbody id="mentorRosterList"></tbody>
           </table>
           <div id="mentorPager" class="row-between" style="margin-top: var(--space-3)"></div>
@@ -138,7 +138,7 @@
           </p>
           <input class="input" id="facSearch" placeholder="🔍 이름·이메일 검색" style="margin-bottom: var(--space-3)" />
           <table class="table">
-            <thead><tr><th>이름</th><th>이메일</th><th>상태</th><th></th></tr></thead>
+            <thead><tr><th>이름</th><th>이메일</th><th>기본 시급</th><th>상태</th><th></th></tr></thead>
             <tbody id="facRosterList"></tbody>
           </table>
           <div id="facPager" class="row-between" style="margin-top: var(--space-3)"></div>
@@ -235,16 +235,25 @@
           </p>
         </div>
 
-        <div class="field" style="max-width: 200px">
-          <label for="sStatus">상태</label>
-          <select class="select" id="sStatus">
-            <option>모집중</option><option>확정</option><option>완료</option><option>취소</option>
-          </select>
+        <div class="row" style="gap: var(--space-3); align-items:flex-start">
+          <div class="field" style="max-width: 200px">
+            <label for="sStatus">상태</label>
+            <select class="select" id="sStatus">
+              <option>모집중</option><option>확정</option><option>완료</option><option>취소</option>
+            </select>
+          </div>
+          <div class="field" style="max-width: 220px">
+            <label for="sBreak">기본 휴게시간 (분)</label>
+            <input class="input" type="number" id="sBreak" min="0" step="10" value="0" />
+            <p class="text-caption text-muted" style="margin-top: var(--space-1)">
+              점심 등 <b>강사료에서 빠지는</b> 시간이에요. 새로 추가하는 회차의 기본값이고, 회차별로 다르면 각 줄에서 고치면 됩니다.
+            </p>
+          </div>
         </div>
 
         <!-- 회차 (날짜·시간) — 회차마다 시간 다르게 가능 -->
         <div class="field" style="border-top:1px solid var(--color-border-weak); padding-top: var(--space-4)">
-          <label>회차 (날짜·시간) <span class="text-caption text-muted">— 회차마다 시간 다르게 넣을 수 있어요</span></label>
+          <label>회차 (날짜·시간) <span class="text-caption text-muted">— 회차마다 시간·휴게 다르게 넣을 수 있어요</span></label>
           <div id="sessionRows" style="margin-top: var(--space-2)"></div>
           <div class="row" style="gap: var(--space-2); margin-top: var(--space-2)">
             <button type="button" class="btn btn-secondary btn-sm" id="addRowBtn">+ 회차 추가</button>
@@ -349,6 +358,14 @@
           </select>
         </div>
         <div class="field">
+          <label for="iFee">기본 시급 (원 / 선택)</label>
+          <input class="input" type="number" id="iFee" min="0" step="10000" placeholder="예: 100000 (모르면 비워두기)" />
+          <p class="text-caption text-muted" style="margin-top: var(--space-1)">
+            <b>새로 배정할 때의 초기값</b>이에요. 교육마다 금액이 다르면 배정 보드에서 건별로 고칠 수 있고,
+            여기를 바꿔도 <b>이미 배정된 교육의 강사료는 안 바뀝니다</b>. 운영팀만 볼 수 있어요.
+          </p>
+        </div>
+        <div class="field">
           <label class="row" style="gap: var(--space-2); cursor:pointer; color: var(--color-fg-normal)">
             <input type="checkbox" id="iAdmin" style="width:18px;height:18px" /> 운영팀(관리자) 권한 부여
           </label>
@@ -397,9 +414,11 @@
         <div class="modal-title" style="margin:0">일정 안내 이미지</div>
         <button class="btn btn-ghost btn-sm" id="shareImgClose">닫기</button>
       </div>
-      <p class="text-caption text-muted" style="margin-bottom: var(--space-2)">
-        아래 이미지를 복사하거나 저장해서 멘토에게 카톡·슬랙으로 보내세요.
-      </p>
+      <div class="field" style="margin-bottom: var(--space-2)">
+        <label for="shareImgTarget">받는 사람</label>
+        <select class="select" id="shareImgTarget"></select>
+        <p class="text-caption text-muted" id="shareImgHint" style="margin-top: var(--space-1)"></p>
+      </div>
       <div id="shareImgPreview" style="max-height: 58vh; overflow:auto; border:1px solid var(--color-border-weak); border-radius: var(--radius-medium); background: var(--color-bg-normal)"></div>
       <div class="modal-actions">
         <button class="btn btn-secondary" id="shareImgCopyBtn">📋 클립보드 복사</button>
@@ -551,9 +570,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="js/config.js?v=20260707b1"></script>
-  <script src="js/auth.js?v=20260707b1"></script>
-  <script src="js/util.js?v=20260707b1"></script>
-  <script src="js/admin.js?v=20260707b1"></script>
+  <script src="js/config.js?v=20260721f1"></script>
+  <script src="js/auth.js?v=20260721f1"></script>
+  <script src="js/util.js?v=20260721f1"></script>
+  <script src="js/admin.js?v=20260721f1"></script>
 </body>
 </html>

@@ -17,6 +17,8 @@ let state = {
   mentorsById: {},
   blocksByEmail: {},
   assignments: [],     // {id, program_id, person_email, staff_type, status}
+  assignSessionIds: {},// assignment_id → Set(session_id). 비어있으면 그 배정은 전 회차 참여
+                       // (규약은 supabase/session-assign.sql 주석 참고)
   materials: [],       // {id, program_id, week_no, owner_id, title, file_path, ...}
   selectedProgramId: null,
   selectedMatProgramIds: null, // 교육자료 탭에서 선택한 교육들(다중). null=최초(기본선택 계산 전)
@@ -196,13 +198,14 @@ async function init() {
 
 // ---------- 데이터 ----------
 async function loadAll() {
-  const [sessions, roster, mentors, blocks, assignments, materials] = await Promise.all([
+  const [sessions, roster, mentors, blocks, assignments, materials, assignSessions] = await Promise.all([
     window.sb.from("education_sessions").select("*").order("date"),
     window.sb.from("invites").select("*").order("created_at"),
     window.sb.from("mentors").select("*"),
     window.sb.from("mentor_blocks").select("*"),
     window.sb.from("assignments").select("*"),
     window.sb.from("materials").select("*").order("created_at", { ascending: false }),
+    window.sb.from("assignment_sessions").select("*"),
   ]);
   if (sessions.error) return Util.toast("로드 실패: " + sessions.error.message);
 
@@ -223,6 +226,12 @@ async function loadAll() {
 
   state.assignments = assignments.data || [];
   state.materials = materials.error ? [] : (materials.data || []); // materials 테이블 없으면 조용히 빈 목록
+  // 배정별 참여 회차. session-assign.sql 실행 전이면 조용히 빈 목록 — 그러면 모든 배정이
+  // "행 없음 = 전 회차 참여"로 해석돼 마이그레이션 전과 완전히 동일하게 동작한다.
+  state.assignSessionIds = {}; // assignment_id → Set(session_id)
+  (assignSessions.error ? [] : (assignSessions.data || [])).forEach((x) => {
+    (state.assignSessionIds[x.assignment_id] ||= new Set()).add(x.session_id);
+  });
 
   await autoCompletePastSessions(); // 종료 시각 지난 회차 자동 완료 처리
   buildPrograms();                  // done/status 반영해 다시 빌드
@@ -295,6 +304,64 @@ function confirmedCount(programId, type) {
   return state.assignments.filter(
     (a) => a.program_id === programId && a.staff_type === type && (a.status === "수락" || a.status === "확정")
   ).length;
+}
+
+// ---------- 강사료 (시간당 단가 × 정산 시간) ----------
+// 금액은 assignments 에만 있고, 그 테이블의 RLS가 본인·운영팀으로 막고 있다.
+// education_sessions 는 멘토 전원이 읽으므로 금액을 절대 그쪽에 두지 말 것. (supabase/fee.sql 주석 참고)
+
+/** 이 배정이 실제로 참여하는 회차 목록.
+ *  규약(session-assign.sql): assignment_sessions 에 행이 없으면 전 회차 참여, 있으면 적힌 회차만.
+ *  assign 이 없으면(배정 안 된 사람 기준으로 볼 때) 전 회차로 본다.
+ *  DB에 남아있는 회차와 교집합을 취하므로, 회차가 지워졌는데 행이 남은 경우에도 안전하다. */
+function sessionsOfAssignment(p, assign) {
+  const ids = assign ? state.assignSessionIds[assign.id] : null;
+  if (!ids || !ids.size) return p.sessions;
+  return p.sessions.filter((s) => ids.has(s.id));
+}
+/** 정산 시간(분) — 회차별 (종료-시작)에서 무급 휴게를 뺀 합.
+ *  sess 는 "그 사람이 실제로 참여하는 회차"여야 한다. 교육 전체 회차를 넘기면 일부만 참여한
+ *  사람의 금액이 과다 산정된다. */
+function paidMinsOf(sess) {
+  return sess.reduce(
+    (sum, s) => sum + Math.max(0, Util.durationMins(s.start_time, s.end_time) - (s.break_mins || 0)), 0);
+}
+/** 시간당 단가 → 총 강사료(원). 단가가 없으면 null.
+ *  sess 는 참여 회차 — sessionsOfAssignment(p, assign) 의 결과를 넘길 것. */
+function feeTotal(sess, perHour) {
+  return perHour ? Math.round((paidMinsOf(sess) / 60) * perHour) : null;
+}
+function assignmentOf(programId, email) {
+  return state.assignments.find((a) => a.program_id === programId && a.person_email === email);
+}
+/** 새 배정의 초기 강사료 = 명단의 기본 시급 스냅샷.
+ *  스냅샷이라서 나중에 명단 단가를 바꿔도 이미 배정된 교육의 금액은 그대로 남는다. */
+function defaultFeeFor(email) {
+  return state.rosterByEmail[email]?.default_fee_per_hour ?? null;
+}
+/** 배정 insert — fee.sql 실행 전이면 강사료 컬럼만 빼고 재시도(배정 자체는 계속 되게) */
+async function insertAssignments(rows) {
+  const res = await window.sb.from("assignments").insert(rows);
+  if (res.error && isMissingColumn(res.error)) {
+    return window.sb.from("assignments").insert(rows.map(({ fee_per_hour, ...rest }) => rest));
+  }
+  return res;
+}
+/** 배정 건별 시급 수정 (배정 보드 인라인 입력) */
+async function setAssignFee(id, perHour) {
+  const a = state.assignments.find((x) => x.id === id);
+  if (!a) return;
+  const val = perHour === "" ? null : Math.max(0, parseInt(perHour, 10) || 0);
+  if ((a.fee_per_hour ?? null) === val) return; // 변경 없음
+  const { error } = await window.sb.from("assignments").update({ fee_per_hour: val }).eq("id", id);
+  if (error) {
+    return Util.toast(isMissingColumn(error)
+      ? "강사료를 저장하려면 supabase/fee.sql 을 먼저 실행하세요."
+      : "강사료 저장 실패: " + error.message);
+  }
+  a.fee_per_hour = val; // 로컬 즉시 반영
+  Util.toast(val === null ? "강사료를 지웠습니다." : `시간당 ${Util.won(val)}으로 저장했습니다.`);
+  renderBoard();
 }
 function programConflicts(program, blocks) {
   return program.sessions.some((s) => Util.sessionConflictsBlocks(s, blocks));
@@ -583,6 +650,8 @@ function renderBoard() {
     b.addEventListener("click", () => setAssignType(b.dataset.settype, b.dataset.type)));
   board.querySelectorAll("[data-confirm]").forEach((b) =>
     b.addEventListener("click", () => setAssignStatus(b.dataset.confirm, "확정")));
+  board.querySelectorAll("[data-fee]").forEach((inp) =>
+    inp.addEventListener("change", () => setAssignFee(inp.dataset.fee, inp.value.trim())));
 }
 
 // ---------- 교육자료 (운영팀: 선택 교육의 자료를 회차별로 보기·다운로드) ----------
@@ -1130,7 +1199,7 @@ function boardSection(program, type, needed) {
   });
   const confirmed = confirmedCount(program.id, type);
   const body = list.length
-    ? rows.map((r) => boardRow(type, r)).join("")
+    ? rows.map((r) => boardRow(type, r, program)).join("")
     : `<p class="text-caption text-muted" style="padding: var(--space-2) 0">${TYPE_LABEL[type]} 명단이 비어 있어요. 아래에서 초대하세요.</p>`;
   return `
     <div style="margin-bottom: var(--space-4)">
@@ -1142,7 +1211,7 @@ function boardSection(program, type, needed) {
     </div>`;
 }
 
-function boardRow(type, r) {
+function boardRow(type, r, program) {
   const { person, assign, blockConflict, dupProgram, registered } = r;
   const conflict = blockConflict || !!dupProgram;
 
@@ -1163,6 +1232,36 @@ function boardRow(type, r) {
     actionCell = `<button class="btn btn-secondary btn-sm" data-assign="${Util.escapeHtml(person.email)}" data-type="${type}">배정</button>`;
   }
 
+  // 강사료 줄 — 배정된 사람에게만. 시간당 단가를 여기서 바로 고칠 수 있고 총액은 자동 계산된다.
+  // 비워두면 '미정'이라 안내 이미지에서 강사료 블록이 통째로 빠진다(0원으로 잘못 보내는 것보다 안전).
+  let feeLine = "";
+  if (assign && program) {
+    const mySess = sessionsOfAssignment(program, assign);
+    const paid = paidMinsOf(mySess);
+    const total = feeTotal(mySess, assign.fee_per_hour);
+    // 일부 회차만 참여하면 금액이 전 회차 기준과 달라지므로, 무엇을 기준으로 계산한 금액인지 함께 보여준다.
+    const partTxt = mySess.length < program.sessions.length
+      ? `<span class="text-caption" style="color:var(--color-fg-assistive)">(${mySess.length}/${program.sessions.length}회차)</span>`
+      : "";
+    // 보드 칸이 좁아 한 줄에 다 넣으면 계산식이 "=" 뒤에서 잘린다 → 입력 줄과 결과 줄을 분리.
+    const totalLine = total === null
+      ? `<div class="text-caption" style="color:var(--color-fg-assistive); padding-left:2px">단가를 넣으면 총액이 계산돼요</div>`
+      : `<div class="text-caption text-muted" style="padding-left:2px">
+           × ${Util.minsLabel(paid)} = <strong class="text-sm" style="color:var(--color-fg-normal)">${Util.won(total)}</strong>${partTxt}
+         </div>`;
+    feeLine = `
+      <div style="margin-top:6px">
+        <div class="row" style="gap:6px; align-items:center; padding-left:2px">
+          <span class="text-caption text-muted">강사료 시간당</span>
+          <input class="input" type="number" min="0" step="10000" data-fee="${assign.id}"
+                 value="${assign.fee_per_hour ?? ""}" placeholder="미정"
+                 style="height:30px; width:110px; font-size:13px" />
+          <span class="text-caption text-muted">원</span>
+        </div>
+        ${totalLine}
+      </div>`;
+  }
+
   const dimCls = conflict && !assign ? " bp-dim" : "";
   return `
     <div class="board-person${dimCls}">
@@ -1171,6 +1270,7 @@ function boardRow(type, r) {
         <div class="bp-tags">${warn}${statusBadge}</div>
         <div class="bp-actions">${actionCell}</div>
       </div>
+      ${feeLine}
     </div>`;
 }
 
@@ -1222,9 +1322,10 @@ async function assignPerson(programId, email, type) {
   }
   // 배정은 이미 구두로 얘기가 끝난 뒤 기록하는 용도라 "제안" 단계 없이 바로 확정.
   const beforeEmails = confirmedAssigneeEmails(programId);
-  const { error } = await window.sb.from("assignments").insert({
+  const { error } = await insertAssignments([{
     program_id: programId, person_email: email, staff_type: type, status: "확정",
-  });
+    fee_per_hour: defaultFeeFor(email), // 명단 기본 시급 스냅샷 — 이후 건별로 수정 가능
+  }]);
   if (error) return Util.toast("배정 실패: " + error.message);
   Util.toast("배정을 확정했습니다. (모든 회차 적용)");
   loadAll();
@@ -1304,7 +1405,11 @@ function sessionLocPlaceholder() {
   const baseLoc = (document.getElementById("sLocation")?.value || "").trim();
   return baseLoc ? `비우면 기본 장소(${baseLoc}) 사용` : "📍 이 회차만 다른 장소 (비우면 기본 장소)";
 }
-function addSessionRow(date = "", start = "10:00", end = "13:00", loc = "", sessionId = "") {
+/** 새 회차 행의 휴게시간 기본값 — 폼 상단 '기본 휴게시간'을 따라간다(반복 생성 시 매번 안 치도록). */
+function defaultBreakMins() {
+  return parseInt(document.getElementById("sBreak")?.value, 10) || 0;
+}
+function addSessionRow(date = "", start = "10:00", end = "13:00", loc = "", sessionId = "", breakMins = null) {
   const wrap = document.getElementById("sessionRows");
   const row = document.createElement("div");
   row.className = "row session-row";
@@ -1313,11 +1418,15 @@ function addSessionRow(date = "", start = "10:00", end = "13:00", loc = "", sess
   // 지운 게 아니라 그 자리에서 날짜·시간을 직접 고친 거라면 id가 그대로 남아있음).
   row.dataset.sessionId = sessionId || "";
   row.style.cssText = "gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center";
+  const brk = breakMins === null ? defaultBreakMins() : breakMins;
   row.innerHTML =
     `<input type="date" class="input sr-date" value="${date}" style="flex:1.3; height:38px; min-width:120px" />` +
     `<input type="time" class="input sr-start" value="${start}" style="height:38px; width:auto" />` +
     `<span class="text-caption">~</span>` +
     `<input type="time" class="input sr-end" value="${end}" style="height:38px; width:auto" />` +
+    `<span class="text-caption text-muted" title="강사료 정산에서 빠지는 무급 휴게시간">휴게</span>` +
+    `<input type="number" class="input sr-break" value="${brk}" min="0" step="10" style="height:38px; width:66px" />` +
+    `<span class="text-caption text-muted">분</span>` +
     `<button type="button" class="btn btn-ghost btn-sm sr-del" style="color:var(--color-info-negative)">✕</button>` +
     `<input type="text" class="input sr-loc" value="${Util.escapeHtml(loc)}" placeholder="${Util.escapeHtml(sessionLocPlaceholder())}" style="flex:1 1 100%; height:34px" />`;
   row.querySelector(".sr-del").addEventListener("click", () => row.remove());
@@ -1330,9 +1439,13 @@ function collectSessionRows() {
     const start = r.querySelector(".sr-start").value;
     const end = r.querySelector(".sr-end").value;
     const loc = r.querySelector(".sr-loc").value.trim();
+    const brk = Math.max(0, parseInt(r.querySelector(".sr-break")?.value, 10) || 0);
     if (!date) continue;
     if (!start || !end || end <= start) return { error: "회차 시간을 확인하세요 (종료가 시작보다 늦어야 함)." };
-    out.push({ date, start, end, loc, sessionId: r.dataset.sessionId || "" });
+    // 휴게가 교육 시간보다 길면 정산 시간이 음수가 된다 — 저장 전에 막는다.
+    if (brk >= Util.durationMins(start, end))
+      return { error: `${Util.fmtDate(date)} 회차의 휴게시간이 교육 시간보다 길거나 같습니다.` };
+    out.push({ date, start, end, loc, breakMins: brk, sessionId: r.dataset.sessionId || "" });
   }
   return { rows: out };
 }
@@ -1479,6 +1592,9 @@ function openModal(program, prefillDate) {
   document.getElementById("sStatus").value = program?.status || "모집중";
   document.getElementById("sLocation").value = program?.location || "";
   document.getElementById("sMemo").value = program?.memo || "";
+  // 기본 휴게시간은 새로 추가하는 회차 행의 초기값으로만 쓰인다(기존 행은 각자 값을 유지).
+  // 편집 중이면 1회차 값을 기준으로 보여준다 — 회차별로 다를 수 있으므로 각 행에서 조정.
+  document.getElementById("sBreak").value = program?.sessions?.[0]?.break_mins ?? 0;
   document.getElementById("deleteSessionBtn").style.display = editing ? "" : "none";
 
   // 회차 행 채우기
@@ -1487,7 +1603,7 @@ function openModal(program, prefillDate) {
   // 기본과 다른 회차만 그 값을 채워 override 로 표시.
   if (editing) program.sessions.forEach((s) =>
     addSessionRow(s.date, Util.hhmm(s.start_time), Util.hhmm(s.end_time),
-      (s.location || "") === (program.location || "") ? "" : (s.location || ""), s.id));
+      (s.location || "") === (program.location || "") ? "" : (s.location || ""), s.id, s.break_mins ?? 0));
   else addSessionRow(prefillDate || "", "10:00", "13:00");
 
   // 반복 채우기 박스 초기화
@@ -1628,20 +1744,35 @@ async function saveProgram(e) {
     return Util.toast("이 교육이 방금 다른 곳에서 수정됐어요. 화면을 새로고침한 뒤 다시 시도해주세요.");
   }
   const pid = id || uuid();
-  // 편집 시 회차를 새로 insert 하므로, 원래 그 행이었던 회차의 수행기록(완료·특이사항)을 이어준다.
-  // 날짜로 찾으면 하루에 회차가 2개 이상일 때 엉뚱한 회차의 기록을 가져올 수 있어 id로 찾는다.
+  // 편집 전 회차를 id로 들고 있는다 — 폼의 각 행이 "기존 회차 수정"인지 "새 회차"인지 가르는 기준.
+  // 날짜로 찾으면 하루에 회차가 2개 이상일 때 엉뚱한 회차와 짝지어진다.
   const prevById = {};
   (state.programById[id]?.sessions || []).forEach((s) => { prevById[s.id] = s; });
-  const sessions = col.rows.map((r) => {
-    const prev = r.sessionId ? prevById[r.sessionId] : undefined;
-    return {
-      ...base, date: r.date, start_time: r.start, end_time: r.end, program_id: pid, created_by: me.id,
-      location: r.loc || base.location, // 회차별 장소(비우면 기본 장소)
-      done: prev?.done ?? false, note: prev?.note ?? "",
-    };
+
+  // 폼 행을 update / insert 로 가른다.
+  //  · 예전에는 편집 때 회차를 전부 insert 한 뒤 기존 회차를 통째로 delete 했다. 그러면 교육을 한 번
+  //    저장할 때마다 education_sessions.id 가 전부 새로 바뀌어서, 그 id를 참조하는 것들(회차별 배정,
+  //    교육자료 회차 매핑)이 조용히 끊긴다. 그래서 기존 행은 자리에서 update 해 id를 보존한다.
+  //  · done/note(수행기록)는 payload 에 넣지 않는다 — update 는 건드리지 않아 그대로 남고,
+  //    insert 는 컬럼 기본값(false / '')이 들어간다. 따로 이어붙일 필요가 없어졌다.
+  const editable = (r) => ({
+    ...base, date: r.date, start_time: r.start, end_time: r.end,
+    location: r.loc || base.location, // 회차별 장소(비우면 기본 장소)
+    break_mins: r.breakMins ?? 0,     // 강사료 정산에서 빼는 무급 휴게시간
   });
-  // computeScheduleChanges용 — DB insert에는 id를 넣으면 안 되므로(기존 행이 아직 안 지워진 상태라
-  // 충돌남) 별도 배열에만 원래 회차 id를 실어 보낸다.
+  const toUpdateSessions = [];
+  const toInsertSessions = [];
+  for (const r of col.rows) {
+    // 폼에 실린 id가 편집 전 목록에 실제로 있을 때만 update — 없는 id로 update 하면 0행이 조용히 갱신된다.
+    if (r.sessionId && prevById[r.sessionId]) toUpdateSessions.push({ id: r.sessionId, fields: editable(r) });
+    else toInsertSessions.push({ ...editable(r), program_id: pid, created_by: me.id });
+  }
+  const keptSessionIds = new Set(toUpdateSessions.map((u) => u.id));
+  const toDeleteSessionIds = Object.keys(prevById).filter((sid) => !keptSessionIds.has(sid));
+
+  // Slack 알림·토스트용 회차 목록 (DB 반영과 무관한 표시용)
+  const sessions = col.rows.map((r) => ({ ...editable(r), program_id: pid }));
+  // computeScheduleChanges용 — 원래 회차 id를 함께 실어 보내 확실하게 짝짓는다.
   const sessionsForDiff = col.rows.map((r) => ({
     id: r.sessionId || null, date: r.date, start_time: r.start, end_time: r.end, location: r.loc || base.location,
   }));
@@ -1668,18 +1799,31 @@ async function saveProgram(e) {
   const toRemove = beforeAssignments.filter((a) => !checkedEmails.has(a.person_email));
   const afterMentorEmails = checked.filter((c) => c.type === "mentor").map((c) => c.email);
 
-  // 삽입(새 회차) → 편집이면 기존 회차 제거 (배정은 program_id 기준이라 유지)
-  let ins = await window.sb.from("education_sessions").insert(sessions);
-  if (ins.error && isMissingColumn(ins.error)) {
-    // done/note 컬럼이 아직 없으면(마이그레이션 전) 그 키 빼고 재시도 — 교육 저장은 계속 동작.
-    const stripped = sessions.map(({ done, note, ...rest }) => rest);
-    ins = await window.sb.from("education_sessions").insert(stripped);
+  // 회차 반영 — 수정 → 추가 → 삭제 순. 삭제를 맨 뒤에 두는 이유: 앞 단계가 실패했을 때
+  // 회차가 사라진 채로 끝나는 상태를 만들지 않기 위함(지우는 건 되돌릴 수 없다).
+  // break_mins 컬럼이 아직 없으면(마이그레이션 전) 그 키만 빼고 재시도 — 교육 저장 자체는 계속 동작.
+  const stripSessionCols = ({ break_mins, ...rest }) => rest;
+  let sessErr = null;
+  const updRes = await Promise.all(toUpdateSessions.map(async (u) => {
+    let r = await window.sb.from("education_sessions").update(u.fields).eq("id", u.id);
+    if (r.error && isMissingColumn(r.error)) {
+      r = await window.sb.from("education_sessions").update(stripSessionCols(u.fields)).eq("id", u.id);
+    }
+    return r;
+  }));
+  sessErr = updRes.find((r) => r.error)?.error || null;
+  if (!sessErr && toInsertSessions.length) {
+    let ins = await window.sb.from("education_sessions").insert(toInsertSessions);
+    if (ins.error && isMissingColumn(ins.error)) {
+      ins = await window.sb.from("education_sessions").insert(toInsertSessions.map(stripSessionCols));
+    }
+    if (ins.error) sessErr = ins.error;
   }
-  if (ins.error) return Util.toast("저장 실패: " + ins.error.message);
-  if (id) {
-    const oldIds = (state.programById[id]?.sessions || []).map((s) => s.id);
-    if (oldIds.length) await window.sb.from("education_sessions").delete().in("id", oldIds);
+  if (!sessErr && toDeleteSessionIds.length) {
+    const del = await window.sb.from("education_sessions").delete().in("id", toDeleteSessionIds);
+    if (del.error) sessErr = del.error;
   }
+  if (sessErr) return Util.toast("저장 실패: " + sessErr.message);
   // 배정 반영 실패(예: RLS, 캐시된 구버전 스키마 등)를 조용히 넘기면 성공 토스트가 뜨고 Slack에도
   // 실제로 반영 안 된 멘토를 "배정됨"으로 잘못 알리게 되므로, 각 결과의 error를 반드시 확인한다.
   let assignErr = null;
@@ -1688,8 +1832,11 @@ async function saveProgram(e) {
     if (del.error) assignErr = del.error;
   }
   if (toAdd.length) {
-    const add = await window.sb.from("assignments").insert(
-      toAdd.map((c) => ({ program_id: pid, person_email: c.email, staff_type: c.type, status: "확정" })));
+    const add = await insertAssignments(
+      toAdd.map((c) => ({
+        program_id: pid, person_email: c.email, staff_type: c.type, status: "확정",
+        fee_per_hour: defaultFeeFor(c.email),
+      })));
     if (add.error) assignErr = add.error;
   }
 
@@ -1783,11 +1930,11 @@ function renderRosterTable(tbodyId, pagerId, type) {
   const filtered = full.filter((v) =>
     !q || (v.name || "").toLowerCase().includes(q) || (v.email || "").toLowerCase().includes(q));
   if (!full.length) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-caption text-muted">아직 없습니다. 위 버튼으로 초대하세요.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-caption text-muted">아직 없습니다. 위 버튼으로 초대하세요.</td></tr>`;
     return renderPager(pagerId, 0, 1, () => {});
   }
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-caption text-muted">‘${Util.escapeHtml(ui.q)}’ 검색 결과가 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-caption text-muted">‘${Util.escapeHtml(ui.q)}’ 검색 결과가 없습니다.</td></tr>`;
     return renderPager(pagerId, 0, 1, () => {});
   }
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -1802,10 +1949,14 @@ function renderRosterTable(tbodyId, pagerId, type) {
       const emailCell = v.email.endsWith("@pending.local")
         ? `<span class="text-caption" style="color:var(--color-fg-assistive)">이메일 미정 (이름으로 연결)</span>`
         : `<span class="text-caption text-muted roster-email" title="${Util.escapeHtml(v.email)}">${Util.escapeHtml(v.email)}</span>`;
+      const feeCell = v.default_fee_per_hour
+        ? `<span class="text-sm">${Util.won(v.default_fee_per_hour)}</span><span class="text-caption text-muted"> /시간</span>`
+        : `<span class="text-caption" style="color:var(--color-fg-assistive)">미설정</span>`;
       return `
         <tr>
           <td class="text-sm" style="font-weight: var(--font-weight-semibold)">${Util.escapeHtml(v.name)}${adminBadge}</td>
           <td>${emailCell}</td>
+          <td style="white-space:nowrap">${feeCell}</td>
           <td>${statusBadge}</td>
           <td style="text-align:right; white-space:nowrap">
             <button class="btn btn-ghost btn-sm" data-schedule="${Util.escapeHtml(v.email)}">📅 스케줄</button>
@@ -1845,6 +1996,7 @@ function openEditPerson(email) {
   document.getElementById("iName").value = v.name;
   document.getElementById("iEmailInput").value = v.email.endsWith("@pending.local") ? "" : v.email;
   document.getElementById("iStaffType").value = v.staff_type;
+  document.getElementById("iFee").value = v.default_fee_per_hour ?? "";
   document.getElementById("iAdmin").checked = v.role === "admin";
   // 가입 완료자는 이메일(=로그인 계정) 변경 불가
   document.getElementById("iEmailInput").disabled = !!v.used;
@@ -1875,6 +2027,8 @@ async function savePerson(e) {
   const emailRaw = document.getElementById("iEmailInput").value.trim().toLowerCase();
   const staffType = document.getElementById("iStaffType").value;
   const role = document.getElementById("iAdmin").checked ? "admin" : "mentor";
+  const feeRaw = document.getElementById("iFee").value.trim();
+  const defaultFee = feeRaw === "" ? null : Math.max(0, parseInt(feeRaw, 10) || 0);
   if (!name) return Util.toast("이름을 입력하세요.");
   if (emailRaw && !isRealEmail(emailRaw)) return Util.toast("올바른 이메일을 입력하거나 비워두세요.");
 
@@ -1888,8 +2042,14 @@ async function savePerson(e) {
 
   // ---- 신규 추가 ----
   if (!editEmail) {
-    const { error } = await window.sb.from("invites")
-      .insert({ email: newEmail, username, name, role, staff_type: staffType, notify_email: notify, created_by: me.id });
+    const row = { email: newEmail, username, name, role, staff_type: staffType, notify_email: notify, created_by: me.id, default_fee_per_hour: defaultFee };
+    let { error } = await window.sb.from("invites").insert(row);
+    // fee.sql 실행 전이면 강사료 컬럼만 빼고 재시도 — 명단 추가 자체는 계속 되게.
+    if (error && isMissingColumn(error)) {
+      const { default_fee_per_hour, ...rest } = row;
+      ({ error } = await window.sb.from("invites").insert(rest));
+      if (!error) Util.toast("기본 시급은 저장되지 않았어요 — supabase/fee.sql 을 먼저 실행하세요.");
+    }
     if (error) {
       if (error.code === "23505") return Util.toast("이미 등록된 이메일입니다.");
       return Util.toast("추가 실패: " + error.message);
@@ -1905,9 +2065,13 @@ async function savePerson(e) {
   if (orig.used && emailChanged) return Util.toast("가입 완료 계정은 이메일을 바꿀 수 없어요.");
 
   // 1) invites 갱신
-  const upd = await window.sb.from("invites")
-    .update({ name, username, role, staff_type: staffType, email: newEmail, notify_email: notify })
-    .eq("email", editEmail);
+  const patch = { name, username, role, staff_type: staffType, email: newEmail, notify_email: notify, default_fee_per_hour: defaultFee };
+  let upd = await window.sb.from("invites").update(patch).eq("email", editEmail);
+  if (upd.error && isMissingColumn(upd.error)) {
+    const { default_fee_per_hour, ...rest } = patch;
+    upd = await window.sb.from("invites").update(rest).eq("email", editEmail);
+    if (!upd.error) Util.toast("기본 시급은 저장되지 않았어요 — supabase/fee.sql 을 먼저 실행하세요.");
+  }
   if (upd.error) {
     if (upd.error.code === "23505") return Util.toast("바꾸려는 이메일이 이미 있어요.");
     return Util.toast("수정 실패: " + upd.error.message);
@@ -2383,6 +2547,7 @@ function fillProgramDatalist() {
 // ---------- 일정 안내 이미지 (멘토 공유용 PNG) ----------
 let shareCanvas = null;
 let shareProgram = null;
+let shareTarget = ""; // "" = 전체 공유용, 이메일 = 그 사람 개인용(강사료 포함)
 
 const SHARE_FONT = (weight, size) =>
   `${weight} ${size}px Pretendard, "Pretendard Variable", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
@@ -2419,10 +2584,16 @@ function shareRoundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-/** 교육 1개 → 안내 이미지 캔버스 (넉넉한 캔버스에 그린 뒤 실제 높이로 잘라냄) */
-function buildScheduleCanvas(p) {
+/** 교육 1개 → 안내 이미지 캔버스 (넉넉한 캔버스에 그린 뒤 실제 높이로 잘라냄)
+ *
+ *  forEmail 을 주면 그 사람 전용 이미지가 된다 — 받는 사람 이름이 상단에 박히고 강사료 블록이 붙는다.
+ *  강사료는 개인 정보라 전체 공유용(forEmail 없음) 이미지에는 절대 넣지 않는다. 한 장에 전원 금액을
+ *  넣으면 단톡방에 올리는 순간 서로의 단가가 노출되기 때문. 그래서 개인용은 1:1로만 보내야 한다. */
+function buildScheduleCanvas(p, forEmail = "") {
   const W = 1000, PAD = 56, scale = 2, MAXH = 6000;
   const color = progColor(p.id);
+  const forAssign = forEmail ? assignmentOf(p.id, forEmail) : null;
+  const forName = forEmail ? nameOf(forEmail) : "";
 
   const big = document.createElement("canvas");
   big.width = W * scale;
@@ -2441,7 +2612,7 @@ function buildScheduleCanvas(p) {
   // 상단 라벨 + 상태 배지
   ctx.fillStyle = color;
   ctx.font = SHARE_FONT(700, 17);
-  ctx.fillText("교육 일정 안내", PAD, y);
+  ctx.fillText(forName ? `교육 일정 안내 · ${forName} 님` : "교육 일정 안내", PAD, y);
   const st = shareStatusStyle(p.status);
   const stW = ctx.measureText(p.status).width + 28;
   shareRoundRect(ctx, W - PAD - stW, y - 8, stW, 34, 17);
@@ -2539,6 +2710,92 @@ function buildScheduleCanvas(p) {
     y += rowH;
   });
 
+  // 강사료 (개인용 이미지에만) — 단가가 아직 없으면 블록을 통째로 생략한다.
+  // 0원이나 빈칸으로 찍어 보내는 것보다, 아예 안 보내고 운영팀이 단가를 채우게 하는 편이 안전하다.
+  if (forAssign?.fee_per_hour) {
+    const perHour = forAssign.fee_per_hour;
+    // 강사료는 "이 사람이 실제로 참여하는 회차"로만 계산한다 — 위 회차 표(교육 전체)와 기준이
+    // 다를 수 있으므로, 일부만 참여하면 아래 '참여 회차' 줄로 그 차이를 드러낸다.
+    const mySess = sessionsOfAssignment(p, forAssign);
+    const grossMins = mySess.reduce((sum, s) => sum + Util.durationMins(s.start_time, s.end_time), 0);
+    const paidMins = paidMinsOf(mySess);
+    const breakMins = grossMins - paidMins;
+    const total = feeTotal(mySess, perHour);
+    const isPartial = mySess.length < p.sessions.length;
+
+    const feeRows = [
+      ["시간당", Util.won(perHour)],
+      // 회차 표의 러닝타임은 '있어야 하는 시간'이고 여기는 '돈이 붙는 시간'이라 서로 다를 수 있다.
+      // 두 숫자가 어긋나 보이지 않도록 휴게가 있으면 계산식을 그대로 노출한다.
+      ["정산 시간", breakMins > 0
+        ? `${Util.minsLabel(paidMins)}  (교육 ${Util.minsLabel(grossMins)} − 휴게 ${Util.minsLabel(breakMins)})`
+        : Util.minsLabel(paidMins)],
+    ];
+    // 전 회차 참여면 굳이 안 넣는다(대부분의 경우 — 줄만 늘어남).
+    if (isPartial) {
+      feeRows.push(["참여 회차", `${p.sessions.length}회차 중 ${mySess.length}회차`]);
+    }
+    const note = forAssign.fee_note || "";
+    // 위 여백 24 + 제목 44 + 행들 + 구분선 22 + 총액 40 + (비고) + ※ 22 + 아래 여백 24
+    const boxH = 176 + feeRows.length * 34 + (note ? 30 : 0);
+
+    y += 30;
+    shareRoundRect(ctx, PAD - 14, y, W - (PAD - 14) * 2, boxH, 14);
+    ctx.fillStyle = "#FFF8F3";
+    ctx.fill();
+    ctx.strokeStyle = "#FFD9BF";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    let fy = y + 24;
+    ctx.fillStyle = "#111827";
+    ctx.font = SHARE_FONT(800, 22);
+    ctx.fillText("강사료", PAD, fy);
+    // 받는 사람을 여기에도 한 번 더 — 운영팀이 엉뚱한 사람에게 보내는 사고를 막는다.
+    ctx.fillStyle = "#C2410C";
+    ctx.font = SHARE_FONT(700, 17);
+    const whoTxt = `${forName} 님`;
+    ctx.fillText(whoTxt, W - PAD - ctx.measureText(whoTxt).width, fy + 4);
+    fy += 44;
+
+    const feeLabelW = 160;
+    for (const [label, value] of feeRows) {
+      ctx.font = SHARE_FONT(700, 17);
+      ctx.fillStyle = "#8A6449";
+      ctx.fillText(label, PAD, fy + 2);
+      ctx.font = SHARE_FONT(500, 20);
+      ctx.fillStyle = "#1F2937";
+      ctx.fillText(value, PAD + feeLabelW, fy);
+      fy += 34;
+    }
+
+    fy += 6;
+    ctx.strokeStyle = "#FFD9BF";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD, fy); ctx.lineTo(W - PAD, fy); ctx.stroke();
+    fy += 16;
+    ctx.font = SHARE_FONT(800, 19);
+    ctx.fillStyle = "#8A6449";
+    ctx.fillText("총 강사료", PAD, fy + 5);
+    ctx.font = SHARE_FONT(800, 30);
+    ctx.fillStyle = "#C2410C";
+    const totalTxt = Util.won(total);
+    ctx.fillText(totalTxt, W - PAD - ctx.measureText(totalTxt).width, fy - 4);
+    fy += 40;
+
+    if (note) {
+      ctx.font = SHARE_FONT(500, 17);
+      ctx.fillStyle = "#6B7280";
+      ctx.fillText(note, PAD, fy);
+      fy += 30;
+    }
+    ctx.font = SHARE_FONT(500, 16);
+    ctx.fillStyle = "#9CA3AF";
+    ctx.fillText("※ 세전 기준입니다.", PAD, fy);
+
+    y += boxH;
+  }
+
   // 푸터
   y += 26;
   ctx.strokeStyle = "#E5E7EB";
@@ -2563,23 +2820,57 @@ function openShareImage(programId) {
   const p = state.programById[programId];
   if (!p) return;
   shareProgram = p;
-  shareCanvas = buildScheduleCanvas(p);
+  shareTarget = "";
+
+  // 받는 사람 선택 — 전체 공유용(강사료 없음) + 배정된 사람별 개인용
+  const sel = document.getElementById("shareImgTarget");
+  const people = [...assignedFor(p.id, "mentor"), ...assignedFor(p.id, "facilitator")];
+  sel.innerHTML =
+    `<option value="">전체 공유용 (강사료 없음)</option>` +
+    people.map((c) => {
+      const fee = assignmentOf(p.id, c.email)?.fee_per_hour;
+      const tag = fee ? ` — 시간당 ${Util.won(fee)}` : " — 강사료 미정";
+      return `<option value="${Util.escapeHtml(c.email)}">${Util.escapeHtml(c.name)} 개인용${Util.escapeHtml(tag)}</option>`;
+    }).join("");
+  sel.onchange = () => renderShareImage(sel.value);
+
+  renderShareImage("");
+  document.getElementById("shareImageModal").classList.remove("hidden");
+}
+
+/** 선택된 받는 사람 기준으로 미리보기를 다시 그린다. */
+function renderShareImage(forEmail) {
+  if (!shareProgram) return;
+  shareTarget = forEmail || "";
+  shareCanvas = buildScheduleCanvas(shareProgram, shareTarget);
+
+  const hint = document.getElementById("shareImgHint");
+  if (!shareTarget) {
+    hint.innerHTML = "여러 명이 함께 보는 방(단톡방·채널)에 올려도 되는 버전이에요. 강사료는 들어가지 않습니다.";
+  } else if (!assignmentOf(shareProgram.id, shareTarget)?.fee_per_hour) {
+    hint.innerHTML = "⚠️ 이 사람은 <b>강사료가 미정</b>이라 금액 없이 나갑니다. 배정 보드에서 시간당 단가를 넣어주세요.";
+  } else {
+    hint.innerHTML = "🔒 <b>강사료가 들어간 개인용</b>이에요. 반드시 본인에게 <b>1:1로만</b> 보내세요.";
+  }
+
   const box = document.getElementById("shareImgPreview");
   box.innerHTML = "";
   const img = new Image();
   img.src = shareCanvas.toDataURL("image/png");
   img.style.cssText = "width:100%; display:block";
   box.appendChild(img);
-  document.getElementById("shareImageModal").classList.remove("hidden");
 }
 function closeShareImage() {
   document.getElementById("shareImageModal").classList.add("hidden");
   shareCanvas = null;
   shareProgram = null;
+  shareTarget = "";
 }
 function downloadShareImage() {
   if (!shareCanvas || !shareProgram) return;
-  const name = `${shareProgram.client || shareProgram.title}_일정안내.png`.replace(/[\\/:*?"<>|]/g, "_");
+  // 개인용은 파일명에 이름을 넣는다 — 여러 장 받아두고 나중에 보낼 때 헷갈리지 않도록.
+  const who = shareTarget ? `_${nameOf(shareTarget)}` : "";
+  const name = `${shareProgram.client || shareProgram.title}_일정안내${who}.png`.replace(/[\\/:*?"<>|]/g, "_");
   shareCanvas.toBlob((blob) => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -2596,7 +2887,9 @@ async function copyShareImage() {
   try {
     const blob = await new Promise((res) => shareCanvas.toBlob(res, "image/png"));
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-    Util.toast("이미지를 복사했어요. 카톡·슬랙에 붙여넣기(Ctrl+V) 하세요.");
+    Util.toast(shareTarget
+      ? `복사했어요. ${nameOf(shareTarget)} 님에게 1:1로만 붙여넣기(Ctrl+V) 하세요 — 강사료가 들어있어요.`
+      : "이미지를 복사했어요. 카톡·슬랙에 붙여넣기(Ctrl+V) 하세요.");
   } catch (err) {
     Util.toast("이 브라우저에선 복사가 안 돼요 — PNG 다운로드를 이용하세요.");
   }
