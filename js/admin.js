@@ -96,6 +96,15 @@ async function init() {
   document.getElementById("shareImgDownloadBtn").addEventListener("click", downloadShareImage);
   document.getElementById("shareImgCopyBtn").addEventListener("click", copyShareImage);
 
+  document.getElementById("spCancel").addEventListener("click", closeSessionPick);
+  document.getElementById("sessionPickModal").addEventListener("click", (e) => {
+    if (e.target.id === "sessionPickModal") closeSessionPick();
+  });
+  document.getElementById("spSave").addEventListener("click", saveSessionPick);
+  document.getElementById("spAll").addEventListener("click", () =>
+    renderSessionPickRows(new Set(spCtx.program.sessions.map((s) => s.id))));
+  document.getElementById("spNone").addEventListener("click", () => renderSessionPickRows(new Set()));
+
   document.getElementById("msClose").addEventListener("click", closeMentorSchedule);
   document.getElementById("mentorScheduleModal").addEventListener("click", (e) => {
     if (e.target.id === "mentorScheduleModal") closeMentorSchedule();
@@ -334,6 +343,13 @@ function feeTotal(sess, perHour) {
 function assignmentOf(programId, email) {
   return state.assignments.find((a) => a.program_id === programId && a.person_email === email);
 }
+/** 테이블 자체가 없을 때(session-assign.sql 실행 전) 감지 — isMissingColumn 은 컬럼용이라 42P01을 못 잡는다. */
+function isMissingTable(error) {
+  const m = ((error?.message || "") + " " + (error?.code || "")).toLowerCase();
+  return error?.code === "42P01" || error?.code === "PGRST205" ||
+    (m.includes("relation") && m.includes("does not exist")) ||
+    (m.includes("table") && m.includes("schema cache"));
+}
 /** 새 배정의 초기 강사료 = 명단의 기본 시급 스냅샷.
  *  스냅샷이라서 나중에 명단 단가를 바꿔도 이미 배정된 교육의 금액은 그대로 남는다. */
 function defaultFeeFor(email) {
@@ -347,6 +363,99 @@ async function insertAssignments(rows) {
   }
   return res;
 }
+// ---------- 회차 선택 (배정된 사람이 실제로 가는 회차) ----------
+let spCtx = null; // { assignId, program, assign }
+
+function openSessionPick(assignId) {
+  const assign = state.assignments.find((x) => x.id === assignId);
+  const program = assign && state.programById[assign.program_id];
+  if (!program) return;
+  spCtx = { assignId, program, assign };
+  document.getElementById("spTitle").textContent = `회차 선택 — ${nameOf(assign.person_email)}`;
+  const sub = program.client && program.title !== program.client ? ` · ${program.title}` : "";
+  document.getElementById("spSubtitle").textContent = (program.client || program.title) + sub;
+  // 저장된 지정이 없으면(=전 회차 참여) 전부 체크된 상태로 연다.
+  const cur = state.assignSessionIds[assignId];
+  renderSessionPickRows(cur && cur.size ? cur : new Set(program.sessions.map((s) => s.id)));
+  document.getElementById("sessionPickModal").classList.remove("hidden");
+}
+
+function renderSessionPickRows(checkedIds) {
+  const rows = spCtx.program.sessions.map((s, i) => {
+    const brk = (s.break_mins || 0) > 0
+      ? ` <span class="text-caption" style="color:var(--color-fg-assistive)">휴게 ${Util.minsLabel(s.break_mins)}</span>` : "";
+    return `
+      <label style="display:flex; gap:10px; align-items:center; padding:10px 2px; border-bottom:1px solid var(--color-border-weak); cursor:pointer">
+        <input type="checkbox" data-sp="${s.id}" ${checkedIds.has(s.id) ? "checked" : ""} style="width:18px;height:18px" />
+        <span class="text-sm" style="min-width:52px; font-weight:var(--font-weight-semibold)">${i + 1}회차</span>
+        <span class="text-sm" style="min-width:130px">${Util.fmtDate(s.date)}</span>
+        <span class="text-caption text-muted">${Util.hhmm(s.start_time)}~${Util.hhmm(s.end_time)}${brk}</span>
+      </label>`;
+  }).join("");
+  const box = document.getElementById("spRows");
+  box.innerHTML = rows;
+  box.querySelectorAll("[data-sp]").forEach((cb) => cb.addEventListener("change", updateSessionPickSummary));
+  updateSessionPickSummary();
+}
+
+function sessionPickChecked() {
+  return new Set([...document.querySelectorAll("#spRows [data-sp]")].filter((c) => c.checked).map((c) => c.dataset.sp));
+}
+
+/** 체크 상태에 따라 정산 시간·강사료를 즉시 다시 보여준다 — 회차를 고르는 이유가 결국 금액이라. */
+function updateSessionPickSummary() {
+  const ids = sessionPickChecked();
+  const { program, assign } = spCtx;
+  const el = document.getElementById("spSummary");
+  const saveBtn = document.getElementById("spSave");
+  if (!ids.size) {
+    el.innerHTML = `<span style="color:var(--color-info-negative)">⚠️ 회차를 1개 이상 선택하세요. 0회차는 <b>배정 해제</b>와 같은 뜻이라 여기서는 저장할 수 없습니다.</span>`;
+    saveBtn.disabled = true;
+    return;
+  }
+  saveBtn.disabled = false;
+  const sess = program.sessions.filter((s) => ids.has(s.id));
+  const fee = feeTotal(sess, assign.fee_per_hour);
+  const all = ids.size === program.sessions.length;
+  el.innerHTML =
+    `선택 <b>${ids.size} / ${program.sessions.length}회차</b>` +
+    (all ? ` <span class="text-caption text-muted">(전 회차 — 나중에 회차가 추가되면 자동 포함됩니다)</span>` : "") +
+    `<br>정산 시간 <b>${Util.minsLabel(paidMinsOf(sess))}</b>` +
+    (fee === null
+      ? ` <span class="text-caption text-muted">· 강사료 미정</span>`
+      : ` · 강사료 <b>${Util.won(fee)}</b> <span class="text-caption text-muted">(세전)</span>`);
+}
+
+function closeSessionPick() {
+  document.getElementById("sessionPickModal").classList.add("hidden");
+  spCtx = null;
+}
+
+async function saveSessionPick() {
+  if (!spCtx) return;
+  const ids = sessionPickChecked();
+  if (!ids.size) return;
+  const { assignId, program } = spCtx;
+  const all = ids.size === program.sessions.length;
+
+  // 전 회차면 행을 아예 남기지 않는다 — "행 없음 = 전 회차" 규약을 지켜야
+  // 나중에 회차가 추가될 때 이 사람이 자동으로 포함된다.
+  const del = await window.sb.from("assignment_sessions").delete().eq("assignment_id", assignId);
+  if (del.error) {
+    return Util.toast(isMissingTable(del.error)
+      ? "회차 선택을 저장하려면 supabase/session-assign.sql 을 먼저 실행하세요."
+      : "저장 실패: " + del.error.message);
+  }
+  if (!all) {
+    const ins = await window.sb.from("assignment_sessions")
+      .insert([...ids].map((sid) => ({ assignment_id: assignId, session_id: sid })));
+    if (ins.error) return Util.toast("저장 실패: " + ins.error.message);
+  }
+  Util.toast(all ? "전 회차 참여로 저장했습니다." : `${ids.size}회차 참여로 저장했습니다.`);
+  closeSessionPick();
+  loadAll();
+}
+
 /** 배정 건별 시급 수정 (배정 보드 인라인 입력) */
 async function setAssignFee(id, perHour) {
   const a = state.assignments.find((x) => x.id === id);
@@ -652,6 +761,8 @@ function renderBoard() {
     b.addEventListener("click", () => setAssignStatus(b.dataset.confirm, "확정")));
   board.querySelectorAll("[data-fee]").forEach((inp) =>
     inp.addEventListener("change", () => setAssignFee(inp.dataset.fee, inp.value.trim())));
+  board.querySelectorAll("[data-sesspick]").forEach((b) =>
+    b.addEventListener("click", () => openSessionPick(b.dataset.sesspick)));
 }
 
 // ---------- 교육자료 (운영팀: 선택 교육의 자료를 회차별로 보기·다운로드) ----------
@@ -1239,18 +1350,26 @@ function boardRow(type, r, program) {
     const mySess = sessionsOfAssignment(program, assign);
     const paid = paidMinsOf(mySess);
     const total = feeTotal(mySess, assign.fee_per_hour);
-    // 일부 회차만 참여하면 금액이 전 회차 기준과 달라지므로, 무엇을 기준으로 계산한 금액인지 함께 보여준다.
-    const partTxt = mySess.length < program.sessions.length
-      ? `<span class="text-caption" style="color:var(--color-fg-assistive)">(${mySess.length}/${program.sessions.length}회차)</span>`
-      : "";
+    const partial = mySess.length < program.sessions.length;
+    // 회차 선택 줄 — 금액의 근거라서 강사료 바로 위에 둔다.
+    const sessLine = `
+      <div class="row" style="gap:6px; align-items:center; margin-top:6px; padding-left:2px">
+        <span class="text-caption text-muted">회차</span>
+        <span class="text-caption"${partial ? ` style="color:var(--color-info-negative); font-weight:var(--font-weight-semibold)"` : ""}>
+          ${partial ? `${program.sessions.length}회차 중 ${mySess.length}회차` : `전 회차 (${program.sessions.length}회)`}
+        </span>
+        <button class="btn btn-ghost btn-sm" data-sesspick="${assign.id}" style="padding:2px 8px">선택</button>
+      </div>`;
     // 보드 칸이 좁아 한 줄에 다 넣으면 계산식이 "=" 뒤에서 잘린다 → 입력 줄과 결과 줄을 분리.
     const totalLine = total === null
       ? `<div class="text-caption" style="color:var(--color-fg-assistive); padding-left:2px">단가를 넣으면 총액이 계산돼요</div>`
       : `<div class="text-caption text-muted" style="padding-left:2px">
-           × ${Util.minsLabel(paid)} = <strong class="text-sm" style="color:var(--color-fg-normal)">${Util.won(total)}</strong>${partTxt}
+           × ${Util.minsLabel(paid)} = <strong class="text-sm" style="color:var(--color-fg-normal)">${Util.won(total)}</strong>
          </div>`;
+    // 참여 회차 수는 바로 위 '회차' 줄이 이미 말해주므로 여기서 또 붙이지 않는다.
     feeLine = `
-      <div style="margin-top:6px">
+      ${sessLine}
+      <div style="margin-top:4px">
         <div class="row" style="gap:6px; align-items:center; padding-left:2px">
           <span class="text-caption text-muted">강사료 시간당</span>
           <input class="input" type="number" min="0" step="10000" data-fee="${assign.id}"
@@ -1812,18 +1931,39 @@ async function saveProgram(e) {
     return r;
   }));
   sessErr = updRes.find((r) => r.error)?.error || null;
+  let newSessionIds = [];
   if (!sessErr && toInsertSessions.length) {
-    let ins = await window.sb.from("education_sessions").insert(toInsertSessions);
+    // .select()로 새 회차의 id를 돌려받는다 — 아래에서 '회차를 지정해 둔 배정'에 이어붙여야 한다.
+    let ins = await window.sb.from("education_sessions").insert(toInsertSessions).select("id");
     if (ins.error && isMissingColumn(ins.error)) {
-      ins = await window.sb.from("education_sessions").insert(toInsertSessions.map(stripSessionCols));
+      ins = await window.sb.from("education_sessions").insert(toInsertSessions.map(stripSessionCols)).select("id");
     }
     if (ins.error) sessErr = ins.error;
+    else newSessionIds = (ins.data || []).map((r) => r.id);
   }
   if (!sessErr && toDeleteSessionIds.length) {
     const del = await window.sb.from("education_sessions").delete().in("id", toDeleteSessionIds);
     if (del.error) sessErr = del.error;
   }
   if (sessErr) return Util.toast("저장 실패: " + sessErr.message);
+
+  // 회차를 새로 추가했다면 기존 배정자도 그 회차에 자동 포함시킨다(결정된 정책).
+  //  · 회차 지정이 없는 배정은 "행 없음 = 전 회차" 규약으로 이미 포함되므로 건드릴 필요가 없다.
+  //  · 지정이 있는 배정만 행을 이어붙인다. 이걸 빼먹으면 일부 회차 참여자는 새 회차에서
+  //    조용히 빠져 강사료가 과소 산정된다.
+  //  · session-assign.sql 실행 전이면 조용히 통과(그때는 애초에 지정이 존재할 수 없다).
+  if (newSessionIds.length) {
+    const partialAssigns = state.assignments.filter(
+      (a) => a.program_id === pid && state.assignSessionIds[a.id]?.size);
+    const links = partialAssigns.flatMap((a) =>
+      newSessionIds.map((sid) => ({ assignment_id: a.id, session_id: sid })));
+    if (links.length) {
+      const r = await window.sb.from("assignment_sessions").insert(links);
+      if (r.error && !isMissingTable(r.error)) {
+        Util.toast("새 회차를 일부 참여자에게 반영하지 못했습니다: " + r.error.message);
+      }
+    }
+  }
   // 배정 반영 실패(예: RLS, 캐시된 구버전 스키마 등)를 조용히 넘기면 성공 토스트가 뜨고 Slack에도
   // 실제로 반영 안 된 멘토를 "배정됨"으로 잘못 알리게 되므로, 각 결과의 error를 반드시 확인한다.
   let assignErr = null;

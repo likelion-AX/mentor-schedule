@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>운영팀 · 교육 운영 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260721f1" />
-  <link rel="stylesheet" href="css/app.css?v=20260721f1" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260722g1" />
+  <link rel="stylesheet" href="css/app.css?v=20260722g1" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -38,7 +38,7 @@
         <div>
           <h1 class="page-title" style="margin:0">교육 일정 & 배정</h1>
           <p class="page-subtitle" style="margin:0">
-            배정은 <strong>교육 단위</strong>예요 — 한 번 배정하면 그 교육의 모든 회차에 적용됩니다. 빈 날짜를 클릭해 교육을 추가하세요.
+            배정은 <strong>교육 단위</strong>예요 — 한 번 배정하면 그 교육의 모든 회차에 적용되고, 일부 회차만 가는 사람은 <strong>회차 · 선택</strong>으로 덜어내면 됩니다. 빈 날짜를 클릭해 교육을 추가하세요.
           </p>
         </div>
         <div class="row" style="gap: var(--space-1); align-items:center">
@@ -427,6 +427,27 @@
     </div>
   </div>
 
+  <!-- 회차 선택 모달 (배정된 사람이 실제로 가는 회차 고르기) -->
+  <div class="modal-backdrop hidden" id="sessionPickModal">
+    <div class="modal">
+      <div class="modal-title" id="spTitle">회차 선택</div>
+      <p class="text-caption text-muted" id="spSubtitle" style="margin-bottom: var(--space-2)"></p>
+      <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
+        이 사람이 <b>실제로 가는 회차</b>만 체크하세요. 강사료는 체크한 회차만 계산됩니다.
+      </p>
+      <div class="row" style="gap: var(--space-2); margin-bottom: var(--space-2)">
+        <button type="button" class="btn btn-ghost btn-sm" id="spAll">전체 선택</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="spNone">전체 해제</button>
+      </div>
+      <div id="spRows" style="max-height: 44vh; overflow:auto; border-top:1px solid var(--color-border-weak)"></div>
+      <div id="spSummary" class="text-sm" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-bg-normal); border-radius: var(--radius-medium)"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="spCancel">취소</button>
+        <button type="button" class="btn btn-primary" id="spSave">저장</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 멘토 스케줄 모달 -->
   <div class="modal-backdrop hidden" id="mentorScheduleModal">
     <div class="modal modal-lg" style="max-width: 820px">
@@ -570,9 +591,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="js/config.js?v=20260721f1"></script>
-  <script src="js/auth.js?v=20260721f1"></script>
-  <script src="js/util.js?v=20260721f1"></script>
-  <script src="js/admin.js?v=20260721f1"></script>
+  <script src="js/config.js?v=20260722g1"></script>
+  <script src="js/auth.js?v=20260722g1"></script>
+  <script src="js/util.js?v=20260722g1"></script>
+  <script src="js/admin.js?v=20260722g1"></script>
 </body>
 </html>
