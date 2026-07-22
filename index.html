@@ -8,6 +8,9 @@
   <link rel="stylesheet" href="css/app.css?v=20260722h1" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
+  <!-- 탭 아이콘은 SVG 우선(어느 크기에서도 안 깨짐). 미지원 브라우저는 아래 PNG로 폴백. -->
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="교육운영" />
@@ -16,11 +19,7 @@
   <div class="auth-screen">
     <div class="auth-card">
       <div class="logo-dot"></div>
-      <h1 class="page-title" style="margin-bottom: var(--space-2)">교육 운영 관리</h1>
-      <p class="text-muted" style="margin-bottom: var(--space-8)">
-        이메일로 로그인하세요.<br />
-        멘토는 가용 시간을, 운영팀은 세션 배정을 관리합니다.
-      </p>
+      <h1 class="page-title" style="margin-bottom: var(--space-8)">교육 운영 관리</h1>
 
       <form id="emailForm" style="text-align:left">
         <div class="field" id="nameField" style="display:none">
@@ -42,7 +41,6 @@
         처음이신가요? <a id="toggleLink">회원가입</a>
       </p>
       <p class="text-caption" id="hint" style="margin-top: var(--space-2); min-height: 16px"></p>
-      <p class="text-caption text-muted mt-4">처음이면 회원가입 → <b>운영팀에 등록된 이름</b>으로 가입하면 자동 연결돼요.</p>
     </div>
   </div>
 
@@ -96,8 +94,11 @@
           if (mode === "signup") {
             const { data, error } = await Auth.signUpWithEmail(email, password, name);
             if (error) {
+              // 이 실패는 대부분 "이메일이 이상해서"가 아니라 이름이 명단과 달라서 생긴다
+              // (가입 트리거가 이름으로 명단을 찾는다 — supabase/harden-access.sql 참고).
+              // 이메일 탓으로 안내하면 멘토가 메일 주소만 계속 바꿔보다 포기하므로 이름을 먼저 짚어준다.
               hint.textContent = /database error|saving new user/i.test(error.message)
-                ? "초대되지 않은 이메일이거나 이미 가입된 이메일이에요. 운영팀에 문의하세요."
+                ? "명단에 등록된 이름과 다르거나, 이미 가입된 이메일이에요. 운영팀에 등록된 이름 그대로 입력했는지 확인해 주세요."
                 : error.message;
               return;
             }
