@@ -23,6 +23,9 @@ function fmtDate(d: string) {
   return `${x.getMonth() + 1}월 ${x.getDate()}일(${w[x.getDay()]})`;
 }
 const b64utf8 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+// 메일 본문(HTML)에 들어가는 사용자 입력 escape — 고객사·교육명·이름 등(인젝션 방지)
+const escHtml = (s: unknown) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
 async function rest(path: string) {
   const r = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: { apikey: SRK, Authorization: `Bearer ${SRK}` } });
@@ -75,7 +78,9 @@ const WRAP = (inner: string) =>
 
 Deno.serve(async (req) => {
   try {
-    if (NOTIFY_SECRET && req.headers.get("x-notify-secret") !== NOTIFY_SECRET) {
+    // fail-closed: NOTIFY_SECRET 미설정이거나 헤더 불일치면 무조건 거부.
+    // (배포 시 Verify JWT OFF 라 이 헤더가 유일한 방어선 → 시크릿 없으면 함수 자체를 잠금)
+    if (!NOTIFY_SECRET || req.headers.get("x-notify-secret") !== NOTIFY_SECRET) {
       return new Response("forbidden", { status: 401 });
     }
     const { type, record, old_record } = await req.json();
@@ -95,7 +100,7 @@ Deno.serve(async (req) => {
         record.person_email,
         `[멘토일정] '${p.client}' ${label} 배정 제안`,
         WRAP(`<h2 style="color:#FF6000">${label} 배정 제안 🔔</h2>
-          <p><b>${p.client}</b> · ${p.title}</p>
+          <p><b>${escHtml(p.client)}</b> · ${escHtml(p.title)}</p>
           <p><b>${sess.length}회차</b>: ${dates}<br>시간: ${time}</p>
           <p>사이트에 로그인해서 <b>수락 또는 거절</b>해 주세요.</p>`),
       );
@@ -113,8 +118,8 @@ Deno.serve(async (req) => {
       await smtpSend(
         ADMIN_EMAIL,
         `[멘토일정] ${who}님이 '${p.client}' ${record.status}`,
-        WRAP(`<h2 style="color:${color}">배정 ${record.status}</h2>
-          <p><b>${who}</b>님이 <b>${p.client}</b> · ${p.title} (${label}) 배정을 <b>${record.status}</b>했습니다.</p>
+        WRAP(`<h2 style="color:${color}">배정 ${escHtml(record.status)}</h2>
+          <p><b>${escHtml(who)}</b>님이 <b>${escHtml(p.client)}</b> · ${escHtml(p.title)} (${label}) 배정을 <b>${escHtml(record.status)}</b>했습니다.</p>
           <p>${sess.length}회차 · ${time}</p>`),
       );
       return json({ sent: "admin", to: ADMIN_EMAIL });
