@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>내 일정 · 교육 운영 관리</title>
-  <link rel="stylesheet" href="css/tokens.css?v=20260722g2" />
-  <link rel="stylesheet" href="css/app.css?v=20260722g2" />
+  <link rel="stylesheet" href="css/tokens.css?v=20260722h1" />
+  <link rel="stylesheet" href="css/app.css?v=20260722h1" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#FF6000" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -84,74 +84,18 @@
         </form>
         </div>
 
-        <!-- 구글 캘린더 연동 (가져오기 + 구독) -->
+        <!-- 구글 캘린더 구독 (앱 → 내 구글 캘린더) -->
         <div class="card">
-          <div class="card-title">📅 구글 캘린더 연동</div>
+          <div class="card-title">📅 구글 캘린더로 받아보기</div>
           <p class="text-caption text-muted" style="margin: calc(-1 * var(--space-2)) 0 var(--space-3)">
-            <b>선택 기능</b>이에요 — 연결하지 않아도 앱은 정상 동작합니다. 편의를 위한 두 가지예요:<br>
-            <b>①</b> 구글에 적어둔 개인 약속을 앱의 <b>'불가시간'</b>으로 자동으로 가져와 운영팀에 공유(수동 입력 대신).<br>
-            <b>②</b> 배정 교육·개인 일정을 <b>내 구글 캘린더</b>에서도 보기(구독).
+            <b>선택 기능</b>이에요 — 등록하지 않아도 앱은 정상 동작합니다.
+            배정된 교육과 개인 일정을 <b>내 구글 캘린더</b>에서도 볼 수 있어요.
           </p>
           <p class="mobile-note text-caption" style="margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); background: var(--color-bg-primary-weak); border-radius: var(--radius-medium); color: var(--color-fg-normal)">
             💻 이 설정은 <b>PC(컴퓨터)에서</b> 하는 게 편해요. 폰에선 주소 복사 정도만 됩니다.
           </p>
 
-          <div class="text-sm" style="font-weight:600; margin-bottom: var(--space-2)">📥 구글에서 가져오기 <span class="text-caption text-muted">(내 약속 → 불가시간)</span></div>
-          <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
-            구글에 적어둔 개인 약속을 자동으로 <b>'불가 시간'</b>으로 가져옵니다.
-            <b>제목·내용은 저장하지 않고 시간만</b> 가져와요 (운영팀에도 시간만 보임).
-          </p>
-          <div class="text-caption" style="color: var(--color-fg-assistive); margin-bottom: 6px">🔎 예시 — 실제 내 일정이 아니라 처리 방식 설명이에요</div>
-          <div class="gcal-eg" id="gcalEg" aria-hidden="true">
-            <div class="gcal-eg-item">
-              <div class="gcal-eg-cap">구글 캘린더(내 원본)</div>
-              <div class="gcal-eg-box">
-                <div class="text-sm" style="font-weight: 600">팀 회식 🍽</div>
-                <div class="text-caption text-muted">강남역 · 19:00–21:00</div>
-              </div>
-            </div>
-            <div class="gcal-eg-arrow">→</div>
-            <div class="gcal-eg-item">
-              <div class="gcal-eg-cap">앱·운영팀이 보는 것</div>
-              <div class="gcal-eg-box app">
-                <div class="text-sm" style="font-weight: 600">🔒 불가 시간</div>
-                <div class="text-caption text-muted">19:00–21:00</div>
-                <div class="text-caption" style="color: var(--color-fg-assistive)">제목·장소 없음</div>
-              </div>
-            </div>
-          </div>
-          <div id="gcalImport" class="stack"></div>
-          <details style="margin-top: var(--space-3)">
-            <summary class="text-caption" style="cursor:pointer"><b>구글 "비공개 주소(iCal)" 찾는 법</b> — 눌러서 펼치기</summary>
-            <div class="text-caption text-muted" style="margin-top: var(--space-2); line-height: 1.75">
-              <p style="margin: 0 0 var(--space-2)">
-                ❗ <b>꼭 PC(컴퓨터)에서</b> 하세요. 핸드폰 구글 캘린더 <b>앱에는 이 메뉴가 없어요.</b>
-              </p>
-              <ol style="margin: 0; padding-left: 1.2em">
-                <li>크롬 등 브라우저에서 <b>calendar.google.com</b> 접속 (본인 구글 계정 로그인)</li>
-                <li>화면 <b>왼쪽 아래</b> <b>"내 캘린더"</b> 목록에서, 약속이 들어있는 <b>본인 캘린더</b>(보통 본인 이름)에 마우스를 올리면 오른쪽에 <b>⋮</b>(점 세 개)가 떠요 → 클릭 → <b>"설정 및 공유"</b></li>
-                <li>설정 페이지에서 스크롤(또는 왼쪽 메뉴)로 맨 아래 <b>"캘린더 통합"</b> 으로 이동</li>
-                <li>
-                  거기 <b>"비공개 주소(iCal 형식)"</b> 칸의 주소를 복사. (바로 위 <b>"공개 주소"가 아니라 "비공개 주소"</b> 예요 ❗)<br>
-                  주소는 <b>…/private-…/basic.ics</b> 처럼 <b>.ics 로 끝나요.</b> 옆 복사 아이콘을 누르거나 주소 전체를 드래그해 복사.
-                </li>
-                <li>그 주소를 <b>위 칸에 붙여넣고 [연결]</b></li>
-              </ol>
-              <p style="margin: var(--space-3) 0 0">
-                💡 캘린더를 여러 개 쓰면 <b>약속이 든 그 캘린더</b>의 비공개 주소를 쓰세요. (캘린더마다 주소가 따로예요)
-              </p>
-              <p style="color: var(--color-danger, #E12337); margin: var(--space-2) 0 0">
-                ⚠️ "비공개 주소"는 본인 캘린더를 읽을 수 있는 <b>비밀 주소</b>예요. 남에게 공유 금지.
-                (앱은 본인만 보관 — 운영팀도 못 봄.) 새어나갔으면 구글의 같은 화면에서 <b>"비공개 주소 재설정"</b> 후 새 주소로 다시 연결하세요.
-              </p>
-              <p style="margin: var(--space-2) 0 0">
-                🔒 안심하세요: 우리는 약속의 <b>시간만</b> 가져오고, <b>제목·내용은 가져오지도 저장하지도 않아요.</b>
-              </p>
-            </div>
-          </details>
-
-          <div style="margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-border-weak)">
-            <div class="text-sm" style="font-weight:600; margin-bottom: var(--space-2)">📤 내 일정 내보내기 <span class="text-caption text-muted">(구독 주소)</span></div>
+          <div>
             <p class="text-caption text-muted" style="margin-bottom: var(--space-3)">
               아래 주소를 구글 캘린더에 한 번만 등록하면, 배정 교육·개인 일정이 자동으로 들어옵니다.
               <b>본인만 아는 비밀 주소</b>예요. 남에게 공유하지 마세요.
@@ -228,10 +172,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-  <script src="js/config.js?v=20260722g2"></script>
-  <script src="js/auth.js?v=20260722g2"></script>
-  <script src="js/util.js?v=20260722g2"></script>
-  <script src="js/mentor.js?v=20260722g2"></script>
-  <script src="js/materials.js?v=20260722g2"></script>
+  <script src="js/config.js?v=20260722h1"></script>
+  <script src="js/auth.js?v=20260722h1"></script>
+  <script src="js/util.js?v=20260722h1"></script>
+  <script src="js/mentor.js?v=20260722h1"></script>
+  <script src="js/materials.js?v=20260722h1"></script>
 </body>
 </html>

@@ -34,93 +34,7 @@ async function init() {
   });
   document.getElementById("blockForm").addEventListener("submit", onAddBlock);
   setupCalendarSync();
-  loadGcalImport();
 
-  await refreshAll();
-}
-
-// ===================== 구글 캘린더 → 앱 (개인 약속 가져오기) =====================
-async function loadGcalImport() {
-  const wrap = document.getElementById("gcalImport");
-  if (!wrap) return;
-  const { data } = await window.sb
-    .from("mentor_calendar_links")
-    .select("enabled,last_synced_at,last_status,last_count")
-    .eq("mentor_id", me.id)
-    .maybeSingle();
-
-  if (!data) {
-    // 미연결 상태
-    wrap.innerHTML = `
-      <div class="field">
-        <input class="input" type="url" id="gcalUrl" placeholder="구글 비공개 주소 (https://calendar.google.com/.../basic.ics)" />
-      </div>
-      <button class="btn btn-primary btn-sm" id="gcalConnect" type="button">연결</button>`;
-    document.getElementById("gcalConnect").addEventListener("click", connectGcal);
-    return;
-  }
-
-  const when = data.last_synced_at ? Util.fmtDate(data.last_synced_at.slice(0, 10)) + " " + data.last_synced_at.slice(11, 16) : "아직 없음";
-  const status = data.last_status === "ok"
-    ? `<span class="badge badge-status-수락">동기화됨</span> ${data.last_count ?? 0}건`
-    : (data.last_status ? `<span class="badge badge-status-거절">오류</span> <span class="text-caption">${Util.escapeHtml(data.last_status)}</span>` : "");
-  wrap.innerHTML = `
-    <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
-      <div class="text-caption">🔗 연결됨 · ${status}</div>
-      <div class="text-caption text-muted">마지막 동기화: ${when}</div>
-      <div class="row mt-4" style="gap: var(--space-2)">
-        <button class="btn btn-primary btn-sm" id="gcalSync" type="button">지금 동기화</button>
-        <button class="btn btn-ghost btn-sm" id="gcalDisconnect" type="button">연결 해제</button>
-      </div>
-    </div>`;
-  document.getElementById("gcalSync").addEventListener("click", syncGcalNow);
-  document.getElementById("gcalDisconnect").addEventListener("click", disconnectGcal);
-}
-
-async function connectGcal() {
-  const url = (document.getElementById("gcalUrl").value || "").trim();
-  if (!/^https:\/\/.+/i.test(url)) return Util.toast("https로 시작하는 구글 비공개 주소를 붙여넣어 주세요.");
-  if (!/ical|\.ics/i.test(url)) {
-    if (!confirm("구글 iCal 주소가 아닌 것 같아요. 그래도 연결할까요?")) return;
-  }
-  const btn = document.getElementById("gcalConnect");
-  btn.disabled = true; btn.textContent = "연결 중…";
-  const { error } = await window.sb
-    .from("mentor_calendar_links")
-    .upsert({ mentor_id: me.id, ical_url: url, enabled: true }, { onConflict: "mentor_id" });
-  if (error) { btn.disabled = false; btn.textContent = "연결"; return Util.toast("연결 실패: " + error.message); }
-  Util.toast("연결했어요. 가져오는 중…");
-  await syncGcalNow(true);
-}
-
-async function syncGcalNow(silent) {
-  if (!silent) Util.toast("구글에서 가져오는 중…");
-  try {
-    const { data: { session } } = await window.sb.auth.getSession();
-    const res = await fetch(`${window.APP_CONFIG.SUPABASE_URL}/functions/v1/sync-google-calendars`, {
-      method: "POST",
-      headers: {
-        apikey: window.APP_CONFIG.SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${session.access_token}`,
-        "Content-Type": "application/json",
-      },
-    });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok || out.error) Util.toast("동기화 실패: " + (out.error || res.status));
-    else Util.toast(`가져왔어요 · ${out.count ?? 0}건`);
-  } catch (e) {
-    Util.toast("동기화 실패: " + e.message);
-  }
-  await loadGcalImport();
-  await refreshAll();
-}
-
-async function disconnectGcal() {
-  if (!confirm("연결을 해제하면 구글에서 가져온 일정이 모두 삭제됩니다.\n계속할까요? (직접 등록한 개인 일정은 유지)")) return;
-  await window.sb.from("mentor_calendar_links").delete().eq("mentor_id", me.id);
-  await window.sb.from("mentor_blocks").delete().eq("mentor_id", me.id).eq("source", "google");
-  Util.toast("연결을 해제하고 가져온 일정을 삭제했어요.");
-  await loadGcalImport();
   await refreshAll();
 }
 
@@ -216,12 +130,11 @@ function showDayDetail(dateStr) {
       </div>`);
   });
   blks.forEach((b) => {
-    const isG = b.source === "google";
     cards.push(`
       <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
         <div class="row-between">
-          <strong class="text-sm">🔒 ${isG ? "개인 일정 (구글)" : Util.escapeHtml(b.memo || "개인 일정")}</strong>
-          ${isG ? `<span class="text-caption text-muted">구글</span>` : `<button class="btn btn-ghost btn-sm" data-delblock="${b.id}">삭제</button>`}
+          <strong class="text-sm">🔒 ${Util.escapeHtml(b.memo || "개인 일정")}</strong>
+          <button class="btn btn-ghost btn-sm" data-delblock="${b.id}">삭제</button>
         </div>
         <div class="text-caption text-muted">${Util.hhmm(b.start_time)}–${Util.hhmm(b.end_time)}</div>
       </div>`);
@@ -304,7 +217,7 @@ function renderCalendar(sessions, mySessionIds, blocks) {
   blocks.forEach((b) => {
     calendar.addEvent({
       id: "block-" + b.id,
-      title: "🔒 " + (b.source === "google" ? "개인 일정 (구글)" : (b.memo || "개인 일정")),
+      title: "🔒 " + (b.memo || "개인 일정"),
       start: Util.toDateTime(b.date, b.start_time),
       end: Util.toDateTime(b.date, b.end_time),
       classNames: ["cal-block"],

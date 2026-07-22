@@ -353,14 +353,6 @@ a:hover { text-decoration: underline; }
 .mat-week .mw-count { margin-left: auto; font-size: var(--font-size-caption); color: var(--color-fg-assistive); }
 .mat-week .mw-body { padding: 2px var(--space-3) var(--space-2); }
 
-/* 구글 가져오기 '내용 미공유' 예시 (구글 원본 → 앱엔 시간만) */
-.gcal-eg { display: flex; align-items: stretch; gap: var(--space-2); margin: 0 0 var(--space-4); }
-.gcal-eg-item { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
-.gcal-eg-cap { font-size: var(--font-size-caption); color: var(--color-fg-assistive); margin-bottom: 4px; }
-.gcal-eg-box { flex: 1; border: 1px solid var(--color-border-weak); border-radius: var(--radius-medium); padding: var(--space-2); background: var(--color-bg-surface); }
-.gcal-eg-box.app { border-color: var(--cal-block-border); background: var(--cal-block-bg); }
-.gcal-eg-arrow { align-self: center; flex: none; color: var(--color-fg-assistive); font-size: 18px; }
-
 /* 운영팀: 큰 캘린더(좌) + 배정 보드(우) */
 .grid-calboard { display: grid; grid-template-columns: 1fr 400px; gap: var(--space-6); align-items: start; }
 .grid-calboard .board-col { position: sticky; top: 88px; }
