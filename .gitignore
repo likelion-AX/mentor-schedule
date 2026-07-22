@@ -7,3 +7,6 @@ _*/
 .vercel/
 .DS_Store
 Thumbs.db
+
+# Supabase CLI 로컬 상태 (DB 접속문자열·프로젝트 ref 등 — 커밋 금지)
+supabase/.temp/
