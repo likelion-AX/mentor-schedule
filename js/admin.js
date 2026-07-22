@@ -2812,38 +2812,59 @@ function buildScheduleCanvas(p, forEmail = "") {
   y += 12;
 
   // 회차 일정 표
+  //  개인용이고 일부 회차만 참여하면, 안 가는 회차를 흐리게 + '미참여'로 표시한다.
+  //  이 이미지가 곧 "며칠에 오세요"라서, 강사료 칸에만 '2회차 참여'라고 적고 날짜는 4개를
+  //  똑같이 나열하면 받는 사람이 어느 날 가야 하는지 알 수 없다.
+  const mySessionIdSet = forAssign ? new Set(sessionsOfAssignment(p, forAssign).map((s) => s.id)) : null;
+  const marksAttendance = !!mySessionIdSet && mySessionIdSet.size < p.sessions.length;
+
   ctx.fillStyle = "#111827";
   ctx.font = SHARE_FONT(800, 22);
   ctx.fillText("회차 일정", PAD, y);
   ctx.fillStyle = color;
   ctx.font = SHARE_FONT(700, 19);
-  ctx.fillText(`총 ${p.sessions.length}회`, PAD + 108, y + 3);
+  ctx.fillText(
+    marksAttendance ? `총 ${p.sessions.length}회 중 ${mySessionIdSet.size}회 참여` : `총 ${p.sessions.length}회`,
+    PAD + 108, y + 3);
   y += 44;
 
   const rowH = p.locationVaries ? 78 : 54;
   p.sessions.forEach((s, i) => {
+    const skip = marksAttendance && !mySessionIdSet.has(s.id);
     if (i % 2 === 0) {
       ctx.fillStyle = "#F8F9FB";
       shareRoundRect(ctx, PAD - 14, y, W - (PAD - 14) * 2, rowH, 10);
       ctx.fill();
     }
     const ty = y + 16;
-    ctx.fillStyle = color;
+    ctx.fillStyle = skip ? "#C9CDD4" : color;
     ctx.font = SHARE_FONT(800, 18);
     ctx.fillText(`${i + 1}회차`, PAD, ty);
-    ctx.fillStyle = "#111827";
+    ctx.fillStyle = skip ? "#AEB4BD" : "#111827";
     ctx.font = SHARE_FONT(600, 21);
     ctx.fillText(Util.fmtDate(s.date), PAD + 104, ty - 2);
-    ctx.fillStyle = "#374151";
+    ctx.fillStyle = skip ? "#AEB4BD" : "#374151";
     ctx.font = SHARE_FONT(500, 21);
     ctx.fillText(`${Util.hhmm(s.start_time)} ~ ${Util.hhmm(s.end_time)}`, PAD + 350, ty - 2);
-    ctx.fillStyle = "#9CA3AF";
-    ctx.font = SHARE_FONT(500, 18);
-    const dur = Util.durationLabel(s.start_time, s.end_time);
-    ctx.fillText(dur, W - PAD - ctx.measureText(dur).width, ty);
+    if (skip) {
+      // 오른쪽 끝은 원래 러닝타임 자리 — 강사료가 안 붙는 회차라 시간 대신 '미참여'를 둔다.
+      ctx.font = SHARE_FONT(700, 16);
+      const tag = "미참여";
+      const tw = ctx.measureText(tag).width + 22;
+      shareRoundRect(ctx, W - PAD - tw, ty - 5, tw, 28, 14);
+      ctx.fillStyle = "#EEF0F3";
+      ctx.fill();
+      ctx.fillStyle = "#8A9099";
+      ctx.fillText(tag, W - PAD - tw + 11, ty);
+    } else {
+      ctx.fillStyle = "#9CA3AF";
+      ctx.font = SHARE_FONT(500, 18);
+      const dur = Util.durationLabel(s.start_time, s.end_time);
+      ctx.fillText(dur, W - PAD - ctx.measureText(dur).width, ty);
+    }
     // 회차별 장소가 다를 때만 각 줄에 장소 표기
     if (p.locationVaries && s.location) {
-      ctx.fillStyle = "#6B7280";
+      ctx.fillStyle = skip ? "#B6BBC3" : "#6B7280";
       ctx.font = SHARE_FONT(500, 18);
       ctx.fillText("장소 · " + s.location, PAD + 104, ty + 28);
     }
