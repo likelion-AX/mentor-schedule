@@ -8,7 +8,7 @@
 let calendar;
 let me; // 프로필
 const IS_MOBILE = window.matchMedia("(max-width: 700px)").matches;
-let view = { sessions: [], blocks: [], myProgramIds: new Set() };
+let view = { sessions: [], blocks: [], mySessionIds: new Set() };
 let selectedDayEl = null;
 
 function todayISO() {
@@ -204,7 +204,7 @@ function showDayDetail(dateStr) {
 
   const cards = [];
   sess.forEach((s) => {
-    const assigned = view.myProgramIds.has(s.program_id);
+    const assigned = view.mySessionIds.has(s.id);
     cards.push(`
       <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
         <div class="row-between">
@@ -254,7 +254,6 @@ async function refreshAll() {
   const sessionList = sessions.data || [];
   const myAssign = assignments.data || [];
   const myBlocks = blocks.data || [];
-  const myProgramIds = new Set(myAssign.map((a) => a.program_id));
 
   // 배정별 참여 회차. session-assign.sql 실행 전이면 조용히 빈 목록 —
   // 그러면 "행 없음 = 전 회차 참여" 규약대로 마이그레이션 전과 동일하게 동작한다.
@@ -268,20 +267,29 @@ async function refreshAll() {
   sessionList.forEach((s) => (sessionsByProgram[s.program_id] ||= []).push(s));
   Object.values(sessionsByProgram).forEach((arr) => arr.sort((a, b) => a.date.localeCompare(b.date)));
 
-  view = { sessions: sessionList, blocks: myBlocks, myProgramIds };
+  // 내가 실제로 가는 회차 id 집합. 배정은 교육 단위지만 참여는 회차 단위일 수 있어서,
+  // program_id 로 판단하면 안 가는 날까지 '내 배정'으로 칠해진다.
+  const mySessionIds = new Set();
+  myAssign.forEach((a) => {
+    const ids = assignSessionIds[a.id];
+    if (ids && ids.size) ids.forEach((id) => mySessionIds.add(id));
+    else (sessionsByProgram[a.program_id] || []).forEach((s) => mySessionIds.add(s.id));
+  });
 
-  renderCalendar(sessionList, myProgramIds, myBlocks);
+  view = { sessions: sessionList, blocks: myBlocks, mySessionIds };
+
+  renderCalendar(sessionList, mySessionIds, myBlocks);
   renderMyAssignments(myAssign, sessionsByProgram, assignSessionIds);
 
   if (IS_MOBILE) showDayDetail(todayISO()); // 폰: 기본으로 오늘 일정 표시
 }
 
-function renderCalendar(sessions, myProgramIds, blocks) {
+function renderCalendar(sessions, mySessionIds, blocks) {
   calendar.removeAllEvents();
 
-  // 1) 기업 교육 회차 (내가 배정된 교육이면 모든 회차 주황으로 강조)
+  // 1) 기업 교육 회차 (내가 가는 회차만 주황으로 강조 — 같은 교육이라도 안 가는 회차는 회색)
   sessions.forEach((s) => {
-    const assigned = myProgramIds.has(s.program_id);
+    const assigned = mySessionIds.has(s.id);
     calendar.addEvent({
       id: "session-" + s.id,
       title: `${s.client || s.title}`,
@@ -317,19 +325,29 @@ function renderMyAssignments(myAssign, sessionsByProgram, assignSessionIds = {})
     wrap.innerHTML = `<p class="text-caption text-muted">아직 배정된 교육이 없습니다.</p>`;
     return;
   }
+  // 참여 회차를 먼저 확정한다 — 카드 정렬·표시·캘린더가 전부 이 값을 기준으로 움직인다.
+  // 행이 없으면 전 회차(session-assign.sql 규약). 행은 있는데 그 회차가 전부 지워졌으면
+  // mySess 가 비므로 아래 filter 에서 카드 자체를 빼 rep 이 undefined 가 되는 걸 막는다.
   const items = myAssign
-    .map((a) => ({ a, sess: sessionsByProgram[a.program_id] || [] }))
-    .filter((x) => x.sess.length)
-    .sort((x, y) => x.sess[0].date.localeCompare(y.sess[0].date));
+    .map((a) => {
+      const sess = sessionsByProgram[a.program_id] || [];
+      const myIds = assignSessionIds[a.id];
+      return { a, sess, mySess: myIds && myIds.size ? sess.filter((s) => myIds.has(s.id)) : sess };
+    })
+    .filter((x) => x.mySess.length)
+    .sort((x, y) => x.mySess[0].date.localeCompare(y.mySess[0].date));
+
+  const mySessById = {}; // 배정 id → 참여 회차 (아래 .ics 핸들러가 씀)
 
   wrap.innerHTML = items
-    .map(({ a, sess }) => {
-      const rep = sess[0];
+    .map(({ a, sess, mySess }) => {
       const canRespond = a.status === "제안";
       const typeLabel = a.staff_type === "facilitator" ? "퍼실리테이터" : "멘토";
-      // 내가 실제로 참여하는 회차 — 행이 없으면 전 회차(session-assign.sql 규약).
-      const myIds = assignSessionIds[a.id];
-      const mySess = myIds && myIds.size ? sess.filter((s) => myIds.has(s.id)) : sess;
+      mySessById[a.id] = mySess;
+      // 이 카드의 날짜·시간·캘린더는 전부 mySess 기준이어야 한다. sess(교육 전체)를 쓰면
+      // "2회차 참여"라고 써놓고 안 가는 날짜를 안내하게 되고, .ics 로 남의 회차까지
+      // 본인 캘린더에 넣어버린다. 대표 시간(rep)도 내가 가는 첫 회차여야 함.
+      const rep = mySess[0];
       // 강사료 — 본인 배정 행에만 들어있고(RLS), 단가가 정해진 경우에만 보여준다.
       // 반드시 "참여 회차"로만 계산한다 — 교육 전체로 계산하면 일부만 참여하는 사람에게
       // 실제보다 큰 금액이 표시된다.
@@ -343,10 +361,10 @@ function renderMyAssignments(myAssign, sessionsByProgram, assignSessionIds = {})
              ${a.fee_note ? `<br><span class="text-muted">${Util.escapeHtml(a.fee_note)}</span>` : ""}
            </div>`
         : "";
-      const calBtns = sess.length === 1
+      const calBtns = mySess.length === 1
         ? `<a class="btn btn-ghost btn-sm" href="${Util.gcalUrl(rep)}" target="_blank" rel="noopener">📅 구글</a>
-           <button class="btn btn-ghost btn-sm" data-ics="${a.program_id}">⬇ .ics</button>`
-        : `<button class="btn btn-ghost btn-sm" data-ics="${a.program_id}">⬇ .ics (${sess.length}회)</button>`;
+           <button class="btn btn-ghost btn-sm" data-ics="${a.id}">⬇ .ics</button>`
+        : `<button class="btn btn-ghost btn-sm" data-ics="${a.id}">⬇ .ics (${mySess.length}회)</button>`;
       return `
         <div class="card" style="padding: var(--space-3); box-shadow:none; border-color: var(--color-border-weak)">
           <div class="row-between">
@@ -354,7 +372,7 @@ function renderMyAssignments(myAssign, sessionsByProgram, assignSessionIds = {})
             <span class="badge badge-status-${a.status}">${a.status}</span>
           </div>
           <div class="text-caption text-muted">${Util.escapeHtml(rep.title)} · ${typeLabel}</div>
-          <div class="text-caption text-muted">${datesSummary(sess)} · ${Util.hhmm(rep.start_time)}–${Util.hhmm(rep.end_time)}</div>
+          <div class="text-caption text-muted">${datesSummary(mySess)} · ${Util.hhmm(rep.start_time)}–${Util.hhmm(rep.end_time)}</div>
           ${feeLine}
           ${
             canRespond
@@ -377,9 +395,11 @@ function renderMyAssignments(myAssign, sessionsByProgram, assignSessionIds = {})
     b.addEventListener("click", () => respond(b.dataset.accept, "수락")));
   wrap.querySelectorAll("[data-reject]").forEach((b) =>
     b.addEventListener("click", () => respond(b.dataset.reject, "거절")));
+  // 배정 id → 내가 참여하는 회차. program_id 로 찾으면 교육 전체가 나와서
+  // 안 가는 회차까지 .ics 에 실린다.
   wrap.querySelectorAll("[data-ics]").forEach((b) =>
     b.addEventListener("click", () => {
-      const sess = sessionsByProgram[b.dataset.ics] || [];
+      const sess = mySessById[b.dataset.ics] || [];
       if (sess.length === 1) Util.downloadIcs(sess[0]);
       else if (sess.length) Util.downloadIcsProgram(sess);
     }));

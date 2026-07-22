@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
   let sessions: Session[] = [];
   if (me.email) {
     const assigns = await rest(
-      `assignments?person_email=eq.${encodeURIComponent(me.email)}&select=program_id`,
+      `assignments?person_email=eq.${encodeURIComponent(me.email)}&select=id,program_id`,
     );
     const programIds = [...new Set(assigns.map((a: any) => a.program_id))].filter(Boolean);
     if (programIds.length) {
@@ -181,6 +181,34 @@ Deno.serve(async (req) => {
           `&select=id,program_id,title,client,date,start_time,end_time,location,needed_mentors,memo` +
           `&order=date`,
       ) as Session[];
+
+      // 회차 단위 배정(session-assign.sql)을 반영해 '안 가는 회차'를 걸러낸다.
+      // 이건 구글 캘린더에 실제로 등록되는 내용이라, 안 거르면 멘토가 안 가는 날에
+      // 일정이 잡혀 있는 걸 보게 된다. 규약: 그 배정에 행이 없으면 전 회차 참여.
+      //
+      // assignment_sessions 가 아직 없으면(마이그레이션 전) rest() 가 던지므로
+      // 조용히 넘어가 기존대로 전 회차를 내보낸다 — 피드가 통째로 죽는 것보다 낫다.
+      try {
+        const assignIds = assigns.map((a: any) => a.id).filter(Boolean);
+        if (assignIds.length) {
+          const idList = assignIds.map((i: string) => `"${i}"`).join(",");
+          const links = await rest(
+            `assignment_sessions?assignment_id=in.(${idList})&select=assignment_id,session_id`,
+          );
+          // 회차를 지정한 배정만 제한 대상. 지정이 없는 배정의 교육은 전 회차 유지.
+          const limited = new Set<string>();   // program_id 중 회차 지정이 있는 것
+          const keep = new Set<string>();      // 실제로 가는 session_id
+          const progOf = new Map<string, string>(assigns.map((a: any) => [a.id, a.program_id]));
+          for (const l of links as any[]) {
+            keep.add(l.session_id);
+            const pid = progOf.get(l.assignment_id);
+            if (pid) limited.add(pid);
+          }
+          if (limited.size) {
+            sessions = sessions.filter((s) => !limited.has(s.program_id) || keep.has(s.id));
+          }
+        }
+      } catch (_) { /* 마이그레이션 전 — 전 회차 그대로 */ }
     }
   }
 
